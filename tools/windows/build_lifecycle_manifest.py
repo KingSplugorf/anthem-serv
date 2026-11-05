@@ -1,7 +1,8 @@
-"""Build the source-only Windows lifecycle update manifest before committing.
+"""Build the Windows project-code update manifest before committing.
 
 Run from any directory: python3 tools/windows/build_lifecycle_manifest.py
-Never includes game assets, credentials, saves, certificates or node_modules.
+Includes project assembly and its bundled patch blob; never includes game
+assets, credentials, saves, certificates or node_modules.
 """
 import hashlib
 import json
@@ -56,9 +57,13 @@ tools/combat_patches/ai/navigation.py
 tools/combat_patches/ai/player_position.py
 tools/combat_patches/ai/player.py
 tools/combat_patches/health/health_mirror.py
+tools/combat_patches/health/health_follow.py
 tools/combat_patches/ai/shots.py
 tools/combat_patches/ai/target.py
 tools/combat_patches/ai/perception.py
+tools/combat_patches/server_behaviours.py
+tools/combat_patches/cave.s
+tools/combat_patches/cave.bin
 tools/combat_patches/server_damage.py
 tools/combat_patches/health/damage.py
 tools/windows/play-profile.ps1

@@ -71,17 +71,20 @@ def safe(function):
     except (OSError, ValueError, struct.error) as error: return {'error': str(error)}
 
 
-def gear(view, component):
+def gear(view, component, *, active_only=False, raw=False):
     first, last = view.qword(component+0x38), view.qword(component+0x40)
     if last < first or (last-first) % 0x88 or (last-first)//0x88 > 64:
         raise OSError('Unsupported gear slot array')
     result = {'active_slot':view.u32(component+0x774),'slots':[]}
     for address in range(first,last,0x88):
-        entry = {'slot':view.u32(address),'entity':view.qword(address+0x20)}
+        key = view.u32(address)
+        if active_only and key != result['active_slot']: continue
+        entry = {'slot':key,'entity':view.qword(address+0x20)}
         def behaviors():
             entity=entry['entity']
             if view.qword(entity) != ACTION_GEAR:
                 return {'error':'Gear entity has another type'}
+            if raw: entry['raw_update_state'] = safe(lambda:view.read(entity+0x2B8,0x120).hex())
             rows=[]
             for offset in range(0x2B8,0x2D8,8):
                 pointer=view.qword(entity+offset)
@@ -92,12 +95,57 @@ def gear(view, component):
                         detail={'table':table,'owner':owner,'owned':0<=owner-entity<0x460 and 0x143660000<=table<0x1442F0000}
                         if detail['owned']:
                             detail.update(vf20=view.qword(table+0x20),vf30=view.qword(table+0x30))
+                            if raw: detail['raw_behavior'] = safe(lambda:view.read(pointer,128).hex())
                         return detail
                     info['details']=safe(details)
                 rows.append(info)
             return rows
         entry['behaviors']=safe(behaviors)
         result['slots'].append(entry)
+    return result
+
+
+def shield(view, address, block):
+    if view.qword(address) != SERVER_SHIELD or view.qword(address+8) != block:
+        raise OSError('Server shield ownership or type changed')
+    state = view.qword(address+0x50)
+    result = {'address':address, 'interface':address+0x30,
+              'interface_table':view.qword(address+0x30), 'state_pointer':state,
+              'maximum':view.f32(address+0x58)}
+    if state:
+        raw = view.read(state,16)
+        result.update(current=struct.unpack_from('<f',raw)[0],
+                      delay=struct.unpack_from('<f',raw,4)[0],
+                      broken_flag=raw[8], active_flag=raw[9], raw_state=raw.hex())
+    return result
+
+
+def defenses(view, entity):
+    """Revalidate tracked enemies and read health/shields without applying damage."""
+    if view.qword(entity) != SERVER_CHARACTER:
+        raise OSError('Tracked character type changed')
+    block = view.qword(entity+0x58)
+    if view.qword(block) != entity:
+        raise OSError('Tracked character component owner changed')
+    count = view.read(block+8,1)[0]
+    rows = view.read(block+0x10,count*32) if count else b''
+    result = {'entity':entity, 'health':[], 'shields':[]}
+    for index in range(count):
+        address = struct.unpack_from('<Q',rows,index*32+0x10)[0]
+        if not address: continue
+        table = view.qword(address)
+        if table not in (*HEALTH_COMPONENTS,SERVER_SHIELD): continue
+        if view.qword(address+8) != block: continue
+        if table == SERVER_SHIELD:
+            result['shields'].append(safe(lambda:shield(view,address,block)))
+        else:
+            current, maximum = struct.unpack('<ff',view.read(address+0x20,8))
+            result['health'].append({'address':address, 'current':current,
+                'maximum':maximum, 'state':view.read(address+0x158,1)[0],
+                'shield_interface':view.qword(address+0x160)})
+    interfaces = {entry['interface'] for entry in result['shields'] if 'interface' in entry}
+    for entry in result['health']:
+        entry['shield_link_matches_component'] = entry['shield_interface'] in interfaces if interfaces else None
     return result
 
 
@@ -125,7 +173,10 @@ def actor(view, entity):
             if table in HEALTH_COMPONENTS:
                 info['health'], info['maximum'] = struct.unpack('<ff', view.read(address+0x20, 8))
                 info['state'] = view.read(address+0x158, 1)[0]
-                info['immortal'] = view.read(view.qword(address+0x10)+0x12F, 1)[0]
+                info['immortal'] = safe(lambda:view.read(view.qword(address+0x10)+0x12F,1)[0])
+                info['shield_interface'] = safe(lambda:view.qword(address+0x160))
+            if table == SERVER_SHIELD:
+                info['shield'] = safe(lambda:shield(view,address,block))
             if table == AI_COMPONENT:
                 info['state'] = view.u32(address+0xC0)
                 info['raw_component'] = view.read(address, 512).hex()
@@ -189,7 +240,7 @@ def player_health(view):
             address = view.qword(block+0x20+index*0x20)
             if not address: continue
             table = view.qword(address)
-            if table not in (PLAYER_HEALTH, SERVER_SHIELD): continue
+            if table not in (PLAYER_HEALTH, SERVER_SHIELD, GEAR_COMPONENT): continue
             if view.qword(address+8) != block: continue
             entry = {'address': address, 'table': table}
             if table == PLAYER_HEALTH:
@@ -197,10 +248,12 @@ def player_health(view):
                 entry['ratio'] = view.f32(address+0x128)
                 entry['state'] = view.read(address+0x158,1)[0]
                 entry['shield_interface'] = view.qword(address+0x160)
-            else:
+            elif table == SERVER_SHIELD:
                 state = view.qword(address+0x50)
                 entry['state_pointer'] = state
                 entry['raw_state'] = safe(lambda: view.read(state,64).hex()) if state else None
+            else:
+                entry['gear'] = safe(lambda:gear(view,address,active_only=True,raw=True))
             result['components'].append(entry)
         return result
 
@@ -223,16 +276,21 @@ def player_health(view):
     return {'server': safe(server), 'client': safe(client)}
 
 
-def watch_health(view, seconds, *, clock=time.monotonic, pause=time.sleep):
+def watch_health(view, seconds, *, enemies=(), clock=time.monotonic, pause=time.sleep):
     if not math.isfinite(seconds) or not 0 <= seconds <= 30:
         raise ValueError('Health recording must last between 0 and 30 seconds')
+    enemies = tuple(enemies)
+    if len(enemies) > 4: raise ValueError('Track at most four enemies')
     start = clock()
     samples = []
     # The count cap also bounds work if the clock moves or a test clock stalls.
     for index in range(121):
-        samples.append({'elapsed':round(clock()-start,3), **player_health(view)})
+        sample = {'elapsed':round(clock()-start,3), **player_health(view)}
+        if enemies:
+            sample['enemies'] = [safe(lambda entity=entity:defenses(view,entity)) for entity in enemies]
+        samples.append(sample)
         remaining = seconds-(clock()-start)
-        if remaining <= 0: break
+        if remaining <= 0 or view.calls >= 20000 or view.bytes+8192 > 1 << 20: break
         pause(min(0.25,remaining))
     return samples
 
@@ -245,7 +303,6 @@ def collect(read, watch_seconds=0):
                               'Actors can change while this read-only snapshot is collected.']}
     # Read original game routines first, before potentially changing world data.
     code_windows(view, NATIVE.values(), report['code'])
-    report['player_health_samples'] = watch_health(view,watch_seconds)
     report['players'] = safe(lambda: player_list.server_players(view))
     report['player_slots'] = safe(lambda: struct.unpack('<3Q', view.read(0x142B2ABE0, 24)))
     report['weapon_counters'] = safe(lambda: struct.unpack('<IIf', view.read(0x1537377D0, 12)))
@@ -286,7 +343,7 @@ def collect(read, watch_seconds=0):
             if info.get('entity') == slots[2] and isinstance(info.get('position'),tuple):
                 report['client_server_position_gap'] = math.dist(client['position'],info['position'])
     report['component_methods'] = []
-    additional, health_methods = set(), set()
+    additional, health_methods, shield_methods = set(), set(), set()
     # These are bounded candidate slots, including the otherwise omitted
     # SetHealth/update region. No table entry is called or replaced.
     report['health_method_tables'] = []
@@ -298,8 +355,17 @@ def collect(read, watch_seconds=0):
                 if BASE+0x1000 <= address < 0x154000000: health_methods.add(address)
             return list(values)
         report['health_method_tables'].append({'table':table,'candidate_slots':safe(health_table)})
+    report['shield_method_tables'] = []
     for info in report['actors']:
         for component in info.get('components',[]):
+            table = component.get('shield',{}).get('interface_table')
+            if (isinstance(table,int) and 0x143660000 <= table < 0x1442F0000
+                    and not any(row['table'] == table for row in report['shield_method_tables'])):
+                def shield_table():
+                    values = struct.unpack('<16Q',view.read(table,128))
+                    shield_methods.update(address for address in values if BASE+0x1000 <= address < 0x154000000)
+                    return list(values)
+                report['shield_method_tables'].append({'table':table,'candidate_slots':safe(shield_table)})
             equipped=component.get('gear',{})
             for slot in equipped.get('slots',[]):
                 behaviors=slot.get('behaviors')
@@ -319,8 +385,21 @@ def collect(read, watch_seconds=0):
                 additional.update(address for address in values if BASE+0x1000 <= address < 0x154000000)
                 return list(values)
             report['component_methods'].append({'table':table,'data_type_name_candidate':name,'candidate_slots':safe(methods)})
+    code_windows(view, sorted(shield_methods), report['code'])
     code_windows(view, sorted(health_methods), report['code'])
     code_windows(view, sorted(additional), report['code'])
+    enemies = [info for info in report['actors'] if info.get('server_player') == 0]
+    player_position = next((info.get('position') for info in report['actors']
+                            if isinstance(slots,tuple) and info.get('entity') == slots[2]),None)
+    def priority(info):
+        shielded = any('interface' in component.get('shield',{}) for component in info.get('components',[]))
+        position = info.get('position')
+        gap = math.dist(position,player_position) if isinstance(position,tuple) and isinstance(player_position,tuple) else math.inf
+        return not shielded,gap,info['entity']
+    enemies = sorted(enemies,key=priority)[:4]
+    report['watched_enemies'] = [{'entity':info['entity'],'name':info.get('name')} for info in enemies]
+    report['player_health_samples'] = watch_health(view,watch_seconds,enemies=[info['entity'] for info in enemies])
+    report['recording_budget_limited'] = view.calls >= 20000 or view.bytes+8192 > 1 << 20
     report['read_budget_used'] = {'calls': view.calls, 'bytes': view.bytes}
     return report
 
@@ -330,7 +409,7 @@ def main():
     parser.add_argument('--pid', type=int, required=True)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--watch-seconds', type=float, default=0,
-                        help='Record player health every 0.25 s for up to 30 seconds while collecting a pickup')
+                        help='Record player health, active weapon state and up to four enemy shields for up to 30 seconds')
     args = parser.parse_args()
     if not math.isfinite(args.watch_seconds) or not 0 <= args.watch_seconds <= 30:
         parser.error('--watch-seconds must be between 0 and 30')
@@ -340,7 +419,7 @@ def main():
         parser.error('Unsupported game image/base')
     with open_memory(args.pid, 'rb') as memory:
         if args.watch_seconds:
-            print(f'Recording for {args.watch_seconds:g} seconds: switch to the game and collect a health pickup.',flush=True)
+            print(f'Recording for {args.watch_seconds:g} seconds: switch to the game; collect a health/ammo pickup or shoot a shielded enemy.',flush=True)
         report = collect(lambda address, size: read_at(memory, address, size),args.watch_seconds)
     report.update(pid=args.pid, image=image, image_base=base)
     output = args.output or Path(f'combat-internals-{args.pid}-{datetime.now():%Y%m%d-%H%M%S}.json')

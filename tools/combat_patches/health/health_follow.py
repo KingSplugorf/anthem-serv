@@ -1,5 +1,7 @@
 """Usage : python3 -I health_follow.py PID [--duree SECONDES] : recopie le bouclier des ennemis et suit les objets destructibles, que le serveur ne réplique pas. La vie et la mort des personnages passent par l'ApplyDamage natif et la réplication native (damage.py, published_health.py). Bouclier : tient la liste des composants de santé serveur et clients (inventaire complet au démarrage puis toutes les 10 min, créations lues dans l'anneau de creations.py), apparie chaque serveur à sa copie cliente et recopie, toutes les 0,5 s, la valeur du bouclier serveur ([[ServerRegeneratingShieldComponent+0x50]]) dans la copie cliente ([[ClientRegeneratingShieldComponent+0x58]] +0 et +0xc). Appariement : d'abord par ordre de création (l'anneau de creations.py enregistre chaque ServerDylanSimpleHealthComponent immédiatement suivi de sa copie cliente, mêmes données +0x10 ; les 64 dernières créations sont relues au démarrage). Les paires établies sont gardées tant que les deux composants vivent ; une adresse revue dans l'anneau est un nouvel objet et ses anciennes paires sont oubliées. À défaut, l'appariement se fait par position (mêmes données +0x10, entité la plus proche à moins de 6 : ServerDylanCharacter +0x1b0 / ClientDylanCharacter +0x1e0). Objets destructibles touchés (anneau 0x153737f80 de impacts.s, server_health.py) : apparie chaque ServerCombatPlaceableHealthComponent à sa copie cliente (mêmes données +0x10, plus petite distance entre les triplets de flottants des 0x400 premiers octets des deux entités ; nouvel inventaire au plus toutes les 15 s si la copie manque) et, à chaque changement de vie ou d'état serveur, remplit une case {composant client, vie, état} de 0x153737f00 lue par death.py. Note une fois chaque table d'entité touchée sans composant de santé connu (anneau 0x153737fd0)."""
 
+# Resolve shield components through their current owning component list every
+# pass. A missing or retired shield must not become a permanent cached result.
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -125,9 +127,12 @@ def inventory(pid: int, servers: set[int], clients: set[int], client_placeables:
 def entity_component(process: Process, component: int, table: int) -> int | None:
     components = process.qword(component + 8)
     count = process.read(components + 8, 1)[0]
-    for index in range(count):
-        other = process.qword(components + 0x20 + index * 0x20)
-        if other and process.qword(other) == table:
+    raw = process.read(components+0x10,count*0x20) if count else b''
+    members = [struct.unpack_from('<Q',raw,index*0x20+0x10)[0] for index in range(count)]
+    if component not in members:
+        return None
+    for other in members:
+        if other and process.qword(other) == table and process.qword(other+8) == components:
             return other
     return None
 
@@ -135,18 +140,23 @@ def entity_component(process: Process, component: int, table: int) -> int | None
 def mirror_shields(process: Process, pairs: list[tuple[int, int]], shields: dict) -> None:
     for server, client in pairs:
         try:
-            if (server, client) not in shields:
-                server_shield = entity_component(process, server, SERVER_SHIELD)
-                client_shield = entity_component(process, client, CLIENT_SHIELD)
-                shields[(server, client)] = (server_shield, client_shield)
-            server_shield, client_shield = shields[(server, client)]
+            if process.qword(server) != SERVER_HEALTH or process.qword(client) != CLIENT_HEALTH:
+                shields.pop((server,client),None)
+                continue
+            # Components may appear after the health pair or be replaced during
+            # streaming. Resolve the current owned shields every pass rather
+            # than permanently caching absence or a retired component pointer.
+            server_shield = entity_component(process, server, SERVER_SHIELD)
+            client_shield = entity_component(process, client, CLIENT_SHIELD)
+            shields[(server,client)] = (server_shield,client_shield)
             if not server_shield or not client_shield:
                 continue
             server_state, client_state = process.qword(server_shield + 0x50), process.qword(client_shield + 0x58)
-            if not server_state or not client_state:
+            if any(not 0x10000 <= state < 1 << 47 or state % 4 for state in (server_state,client_state)):
                 continue
             value = process.float(server_state)
-            if value >= 0.0 and abs(process.float(client_state) - value) > 0.01:
+            current = process.float(client_state)
+            if math.isfinite(value) and value >= 0.0 and (not math.isfinite(current) or abs(current-value) > 0.01):
                 process.write_float(client_state, value)
                 process.write_float(client_state + 0xC, value)
         except OSError:

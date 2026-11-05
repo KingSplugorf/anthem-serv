@@ -12,10 +12,9 @@ start:
     call rax
     mov qword ptr [rsp + 0x48], rax
     lea r12, [rbx - 0x3e0]
-    mov rdi, qword ptr [r12 + 0x2b8]
-    call owned
-    test al, al
-    je done
+    movabs rax, 0x143a5bf40
+    cmp qword ptr [r12], rax
+    jne done
     movss xmm0, dword ptr [rsi + 0x528]
     movss dword ptr [rsp + 0x20], xmm0
     lea rax, [r12 + 0x2f8]

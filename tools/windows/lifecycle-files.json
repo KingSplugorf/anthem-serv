@@ -191,6 +191,10 @@
       "sha256": "ee92d713523a92f677d2ba50406a7d2d755654d4dfb9e5ebb7333fd47f2eef96"
     },
     {
+      "path": "tools/combat_patches/health/health_follow.py",
+      "sha256": "906882f5c1f410b6859f82ffd29f2c6d9267bb1a7dbebf690d9bd54c4468ed27"
+    },
+    {
       "path": "tools/combat_patches/ai/shots.py",
       "sha256": "59bfd1ff98cdfc3f13b98361dd2b43912e478505f179335549e446284a9f12b9"
     },
@@ -201,6 +205,18 @@
     {
       "path": "tools/combat_patches/ai/perception.py",
       "sha256": "77b949120413cdd050c34ad9cdcef71da79522deeda31e97c31a05d40e5c5f2b"
+    },
+    {
+      "path": "tools/combat_patches/server_behaviours.py",
+      "sha256": "f69f88f13ef58c420353b7eeedb7a5394fe8a9aefc5e3c9272ecbd6c50da1dd4"
+    },
+    {
+      "path": "tools/combat_patches/cave.s",
+      "sha256": "4f2eac67d04be859d1a5cd15b993acacb96b61c4ede018cac0948606a2dd7905"
+    },
+    {
+      "path": "tools/combat_patches/cave.bin",
+      "sha256": "503eb29dc1f2cfd756225c455c1ce0ea9c8bd06d84482f178f2ad28cd3fd0b0f"
     },
     {
       "path": "tools/combat_patches/server_damage.py",
@@ -228,7 +244,7 @@
     },
     {
       "path": "tools/windows/inspect_combat.py",
-      "sha256": "af4eb2de1da6788bf42a1de57440def25a3037d49188ca1e6a6a2f2e9908870f"
+      "sha256": "62e43cd2f09832adddfb667f3542e7ee66036ec61402456a73e3afd265d7ef8e"
     },
     {
       "path": "tools/tests/test_direct_python.py",
@@ -240,11 +256,11 @@
     },
     {
       "path": "tools/windows/build_lifecycle_manifest.py",
-      "sha256": "62ebc6e4a9f6ee446f42c4e280c89b927dd2475a754253a1dc10d14ea9811114"
+      "sha256": "bd97e666e1ba3c99f2bdaaed9239e282f068cad39c54a2d1fdf6d97e13cb1584"
     },
     {
       "path": "tools/windows/README.md",
-      "sha256": "321ecf9d35b4090b46305ead6f1ce13a7999fac72d43856775a368edaa03f2c1"
+      "sha256": "27f77c29cfd1dee0d8d60a87e7f7879341a1d15acc2ecb1b081e58e70de4e210"
     }
   ]
 }

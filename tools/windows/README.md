@@ -500,8 +500,35 @@ Shards balance and Wind Wall creation remain under investigation. Scars and
 Brutes attack on-device, while wildlife move and react to damage but still fail
 to attack or deal damage reliably; health-bar color alone does not isolate the
 problem. Health pickups have also been reported not to
-restore pilot health. The health follower copies enemy shields and destructibles,
+restore pilot health despite disappearing when collected. Ammo pickups do not
+refill certain weapons, including the Pulse Accelerator. Enemy blue shield bars
+have been reported remaining full while health decreases. These are still open
+gameplay defects. The health follower copies enemy shields and destructibles,
 not the pilot's health; pickup handling and replication still need tracing.
+
+The server gear wrapper now validates the gear entity and updates each owned
+behavior independently. Previously an absent or unowned cadence behavior skipped
+firing, aiming and ammo behavior too. The source and bundled `cave.bin` ship
+together; no assembler is needed on Windows. A native Microsoft-ABI fixture
+executes the compiled wrapper in eight cases, including missing cadence,
+unowned/misaligned behaviors, a false readiness result, unsupported entity type
+and preserving the original update's return and context. This fixes the wrapper
+gate; Pulse Accelerator refills, Wind Wall creation and wildlife attacks still
+need an on-device comparison. Restart the game to install the new wrapper;
+unexpected thunks and older live code are rejected before any writes.
+
+Shield-display synchronization now resolves the current owned enemy shield
+components on each pass. A shield created after its health pair is retried;
+retired/foreign components and nonfinite server values are not copied. Previously
+the first missing client shield was cached forever, which could leave its blue
+bar stale. This corrects the follower; whether actual damage also bypasses the
+server shield still requires the health/shield recording below.
+
+The melee/explosion section adapter also still supplies a fixed development
+damage amount rather than evaluating each ability's damage. This is a concrete
+limitation relevant to excessive ability damage. Replacing it requires the
+native impact/formula context; the generic damage helper currently discards
+hit-part/material information, relevant to the Anrisaur head-plate defect.
 
 Repeat AI setup now recognizes the verified perception code already installed
 by the preceding expedition. It preserves that code and the current player
@@ -537,10 +564,18 @@ then switch back to the game and collect one during this 20-second recording:
 py -3 .\tools\windows\inspect_combat.py --pid <running-game-pid> --watch-seconds 20
 ```
 
-Health samples contain verified server health fields and raw client-component
-bytes; unverified client offsets are not presented as health values. Each sample
+Health samples contain verified server health fields, raw client-component bytes,
+and the active weapon's update/owned behavior state for pickup comparisons;
+unverified ammo/client-health offsets are not presented as decoded values.
+Up to four observed enemies are tracked, preferring shielded enemies and then
+proximity. Their shield capacity, current state, active/broken flags and health
+component's shield-interface link are captured separately from health. The
+snapshot also exports bounded candidate shield-interface methods. Each sample
 revalidates component ownership. Recordings are limited to 30 seconds and share
-the snapshot's total read budget.
+the snapshot's total read budget; budget-limited recordings are marked.
+For the shield defect, make the recording near a living enemy with a blue shield
+bar and fire a few ordinary bullets. For the Pulse Accelerator, equip it and
+collect an ammo pickup during a separate recording after spending ammunition.
 The inspector reads no more than 1 MiB with at most 20,000 read
 attempts; actor state can change during collection and failed reads are reported.
 It does not execute game functions, attach a debugger, patch memory or change saves.
@@ -576,7 +611,7 @@ Install the source update with the pinned revision supplied alongside the releas
 ```
 
 Close the game and launcher first. The updater downloads every manifest-listed
-source file, verifies SHA-256 hashes, and backs up replaced sources under
+project file, verifies SHA-256 hashes, and backs up replaced files under
 `.lifecycle-backup-*` before installing them. Saves, certificates, game.conf,
 installed game files, launcher dependencies and npm configuration are preserved.
 `-Start` rebuilds all three services and opens the launcher with **Original save**;
