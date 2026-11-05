@@ -656,6 +656,9 @@ pub fn is_starting_gear(uid: u64) -> bool {
 
 /// UID actuel d'un UID gardé : anciens UID de la Forge par javelin (20001… Colossus) et homologues devenus objets de la Forge.
 pub fn current_uid(uid: u64) -> u64 {
+    if uid >= crate::progression::FIRST_EARNED_UID {
+        return uid;
+    }
     if let Some(offset) = uid.checked_sub(FIRST_FORGE_UID) {
         return FIRST_FORGE_UID + offset % FORMER_FORGE_UIDS_PER_EXO;
     }
@@ -664,6 +667,48 @@ pub fn current_uid(uid: u64) -> u64 {
         .find(|(numbered_uid, _)| *numbered_uid == uid)
         .and_then(|(_, gear)| forge_rank(gear.item_data_id))
         .map_or(uid, forge_uid)
+}
+
+pub(crate) fn earned_item(uid: u64, item: &ForgeItem, rarity: i32, level: u64) -> Value {
+    let mut value = instance(uid, item.item_data_id, item.item_guid, rarity);
+    value["level"] = json!(level);
+    value["viewed"] = json!(false);
+    value
+}
+
+/// Initial workbench recipes use known equipment blueprint paths, not invented native recipe DTOs.
+pub(crate) fn craft_catalog() -> Vec<Value> {
+    let mut recipes = Vec::new();
+    for exo in 0..4 {
+        for entry in basic_gear(exo) {
+            if recipes
+                .iter()
+                .any(|recipe: &Value| recipe["itemDataId"] == entry.item_data_id)
+            {
+                continue;
+            }
+            if let Some(item) = FORGE_ITEMS
+                .iter()
+                .find(|item| item.item_data_id == entry.item_data_id)
+            {
+                if item.min_rarity > 1 {
+                    continue;
+                }
+                let name = entry
+                    .blueprint
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("Equipment")
+                    .trim_start_matches("weapon_")
+                    .trim_end_matches("_defaultitem")
+                    .replace('_', " ");
+                recipes.push(json!({"recipeId":format!("basic-{}",entry.item_data_id),"name":name,
+                    "itemDataId":entry.item_data_id,"exoTypes":item.exo_types,"rarity":item.min_rarity.max(1),
+                    "requiredLevel":1,"costs":{"parts":10,"ember_1":2}}));
+            }
+        }
+    }
+    recipes
 }
 
 /// GameConfigItemSalvageDto {GameItemId, ItemBreakdowns} des objets de la Forge, sans les homologues de l'équipement de départ.

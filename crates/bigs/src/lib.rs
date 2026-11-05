@@ -15,6 +15,7 @@ mod forge_items;
 mod gameconfig;
 mod gear;
 mod mtx;
+mod progression;
 mod startup;
 mod state;
 mod weapon_damage;
@@ -159,6 +160,29 @@ pub fn router(context: Context) -> Router {
 
 fn service_routes() -> Router<Context> {
     Router::new()
+        .route("/progression", get(progression::page))
+        .route("/progression.js", get(progression::script))
+        .route("/local/progression", get(progression::overview))
+        .route(
+            "/local/progression/characters/{character}",
+            get(progression::view),
+        )
+        .route(
+            "/local/progression/characters/{character}/craft",
+            post(progression::craft),
+        )
+        .route(
+            "/local/progression/characters/{character}/salvage",
+            post(progression::salvage_local),
+        )
+        .route(
+            "/local/progression/characters/{character}/tickets",
+            post(progression::stage_ticket),
+        )
+        .route(
+            "/local/progression/characters/{character}/claim",
+            post(progression::claim),
+        )
         .route("/", get(empty_object).post(exchange_token))
         .route("/token", post(token))
         .route("/connect/token", post(server_token))
@@ -391,12 +415,12 @@ async fn token(State(context): State<Context>, body: Bytes) -> Json<Value> {
     }))
 }
 
-async fn commit_persistence(State(context): State<Context>, body: Bytes) -> Json<Value> {
+async fn commit_persistence(State(context): State<Context>, body: Bytes) -> progression::Reply {
     let text = String::from_utf8_lossy(&body).into_owned();
     println!(
         "sauvegarde de persistance reçue ({} octets) : {}",
         text.len(),
-        &text[..text.len().min(2000)]
+        text.chars().take(2000).collect::<String>()
     );
     if let Some(directory) = &context.commit_directory {
         let _ = std::fs::create_dir_all(directory.as_ref());
@@ -410,17 +434,16 @@ async fn commit_persistence(State(context): State<Context>, body: Bytes) -> Json
         .as_str()
         .and_then(|elements| serde_json::from_str(elements).ok())
         .unwrap_or_default();
-    context
-        .state
-        .lock()
-        .expect("fichier d'état")
-        .commit_persistence(&changes);
+    progression::commit_quests(&context, &changes, request["source"] != "editor")
+        .map_err(progression::error)?;
     context
         .persistence_commits
         .lock()
         .expect("sauvegardes")
         .push(text);
-    Json(json!({ "transactionId": request["transactionId"], "serverEpochTime": epoch_seconds() }))
+    Ok(Json(
+        json!({ "transactionId": request["transactionId"], "serverEpochTime": epoch_seconds() }),
+    ))
 }
 
 /// Jeton au format JWT (en-tête, revendications, signature factice en base64url sans remplissage).

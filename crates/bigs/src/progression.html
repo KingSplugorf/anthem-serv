@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Anthem progression workbench</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui;background:#101923;color:#ebeff4}body{max-width:1000px;margin:36px auto;padding:0 20px}
+h1{font-size:1.8rem}h2{font-size:1.25rem}section{background:#1a2837;padding:18px;margin:18px 0;border-radius:8px}
+button,select{font:inherit;padding:8px;background:#263b50;color:inherit;border:1px solid #62788e;border-radius:4px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}
+p{line-height:1.5}small,.muted{color:#b5c5d4}#status{min-height:1.5em;color:#ffd48a}progress{width:100%;height:18px}
+table{border-collapse:collapse;width:100%}td,th{padding:8px;text-align:left;border-bottom:1px solid #34475a}td:first-child{overflow-wrap:anywhere}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+</style>
+<h1>Pilot progression &amp; crafting</h1>
+<p>First completions of supported mission quests award XP, equipment and crafting materials. Ending or abandoning an expedition alone gives no reward. These are initial local-server reward rules.</p>
+<div class="row"><label>Pilot <select id="pilot"></select></label><button id="refresh">Refresh</button></div>
+<p id="status" role="status" aria-live="polite">Loading pilots…</p>
+<section><h2 id="level">Pilot</h2><p id="xp"></p><progress id="bar" max="1" value="0"></progress><p id="materials"></p></section>
+<section><h2>Craft equipment</h2><p>Crafting uses saved materials and produces a new equipment instance at your current pilot level.</p><div class="row"><select id="recipe" aria-label="Recipe"></select><button id="craft">Craft</button></div><p id="cost"></p></section>
+<section><h2>Earned equipment</h2><p class="muted">The game supplies localized equipment names in its Forge. This list shows saved item IDs so you can match instances. Starting and equipped items cannot be salvaged.</p><div id="items"></div></section>
+<section><h2>Pending backpack</h2><p id="pending"></p><button id="claim">Claim pending loot</button><p class="muted">Native ground-drop ticket collection and in-game Forge crafting still need integration testing. This workbench uses the same saved inventory as the game. Reconnect if the game has cached an older inventory or level.</p></section>
+<script src="/progression.js" defer></script></html>

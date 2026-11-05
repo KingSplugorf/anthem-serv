@@ -1,0 +1,372 @@
+[
+  {
+    "definitionId": 1077611889,
+    "questId": 3672053150,
+    "name": "yar_sty_050_target_slp"
+  },
+  {
+    "definitionId": 1110764425,
+    "questId": 602005668,
+    "name": "critpath_act01_expzhimscaravan_ql"
+  },
+  {
+    "definitionId": 1127817159,
+    "questId": 1392885019,
+    "name": "mts_sty_070_giftofmatti_slp"
+  },
+  {
+    "definitionId": 1135201409,
+    "questId": 1571756333,
+    "name": "brn_sty_040_scenario"
+  },
+  {
+    "definitionId": 1177048951,
+    "questId": 3675079509,
+    "name": "cp_ft1_intro_020_ql"
+  },
+  {
+    "definitionId": 1183024007,
+    "questId": 2828824435,
+    "name": "yar_lit_030"
+  },
+  {
+    "definitionId": 1194827494,
+    "questId": 1321840594,
+    "name": "cp_ft1_intro_030_ql"
+  },
+  {
+    "definitionId": 1203232911,
+    "questId": 3061199196,
+    "name": "brn_con_generic"
+  },
+  {
+    "definitionId": 1204245039,
+    "questId": 3945311768,
+    "name": "subplot_emeraldabyss_expedition03_legendary_questlogic"
+  },
+  {
+    "definitionId": 1256803901,
+    "questId": 3661846470,
+    "name": "mts_lit_030"
+  },
+  {
+    "definitionId": 1257733889,
+    "questId": 2517638247,
+    "name": "subplot_triplethreat_expedition01_ql"
+  },
+  {
+    "definitionId": 1260975523,
+    "questId": 2419100377,
+    "name": "brn_sty_010_scenario"
+  },
+  {
+    "definitionId": 1270939482,
+    "questId": 1401555469,
+    "name": "freeplay_quest"
+  },
+  {
+    "definitionId": 1284780513,
+    "questId": 307726838,
+    "name": "weekly_templeofscar_stronghold_dqlp"
+  },
+  {
+    "definitionId": 1285300753,
+    "questId": 3219774034,
+    "name": "critpath_act04_exprescuehaluk_ql"
+  },
+  {
+    "definitionId": 1303697971,
+    "questId": 479210954,
+    "name": "mts_sty_040_slp"
+  },
+  {
+    "definitionId": 1315017950,
+    "questId": 2847191720,
+    "name": "the_sunken_stronghold_dqlp"
+  },
+  {
+    "definitionId": 1332011959,
+    "questId": 356511813,
+    "name": "subplot_emeraldabyss_expedition01_questlogic"
+  },
+  {
+    "definitionId": 1352562698,
+    "questId": 3163620051,
+    "name": "subplot_emeraldabyss_expedition02_legendary_questlogic"
+  },
+  {
+    "definitionId": 1353918397,
+    "questId": 4000987622,
+    "name": "brn_sty_050_scenario"
+  },
+  {
+    "definitionId": 1360085264,
+    "questId": 3128231334,
+    "name": "subplot_triplethreat_expedition02_legendary_ql"
+  },
+  {
+    "definitionId": 1378431292,
+    "questId": 747476864,
+    "name": "critpath_act01_incursion_ql_legendary"
+  },
+  {
+    "definitionId": 1380958540,
+    "questId": 431032402,
+    "name": "yar_sty_060_baddeal_slp"
+  },
+  {
+    "definitionId": 1392610806,
+    "questId": 2922797964,
+    "name": "mts_sty_050_ancientfootsteps_slp"
+  },
+  {
+    "definitionId": 1400203024,
+    "questId": 2015359377,
+    "name": "mts_sty_060_scenario"
+  },
+  {
+    "definitionId": 1406763898,
+    "questId": 3769847744,
+    "name": "brn_con_legendary"
+  },
+  {
+    "definitionId": 1412237624,
+    "questId": 4081102486,
+    "name": "mts_sty_030_hiddendepths_slp"
+  },
+  {
+    "definitionId": 1440426189,
+    "questId": 1571446382,
+    "name": "season_skull_mainquest_dqlp"
+  },
+  {
+    "definitionId": 1474858096,
+    "questId": 682350837,
+    "name": "subplot_emeraldabyss_expedition01_legendary_questlogic"
+  },
+  {
+    "definitionId": 1490152348,
+    "questId": 3665417999,
+    "name": "brn_sty_060_scenario"
+  },
+  {
+    "definitionId": 1504416433,
+    "questId": 680915601,
+    "name": "mts_sty_010_scenario"
+  },
+  {
+    "definitionId": 1525066715,
+    "questId": 2785397708,
+    "name": "critpath_act04_exprescuehaluk_legendary_ql"
+  },
+  {
+    "definitionId": 1550787437,
+    "questId": 1466361676,
+    "name": "yar_sty_010_freelancers_slp"
+  },
+  {
+    "definitionId": 1554185946,
+    "questId": 804152334,
+    "name": "critpath_act01_tomboftarsis_ql"
+  },
+  {
+    "definitionId": 1560698607,
+    "questId": 1936367571,
+    "name": "subplot_emeraldabyss_expedition02_questlogic"
+  },
+  {
+    "definitionId": 1579817010,
+    "questId": 3463965632,
+    "name": "yar_sty_070_impostor_slp"
+  },
+  {
+    "definitionId": 1596385066,
+    "questId": 1791795639,
+    "name": "critpath_act02_expfortressofdawn_ql"
+  },
+  {
+    "definitionId": 1597917193,
+    "questId": 672573783,
+    "name": "brn_sty_070_scenario"
+  },
+  {
+    "definitionId": 1606836971,
+    "questId": 609191694,
+    "name": "critpath_act01_expzhimscaravan_legendary_ql"
+  },
+  {
+    "definitionId": 1611927952,
+    "questId": 593748215,
+    "name": "critpath_act05_expheartofrage_ql"
+  },
+  {
+    "definitionId": 1632371302,
+    "questId": 1009262998,
+    "name": "mts_sty_020_title_slp"
+  },
+  {
+    "definitionId": 1648862293,
+    "questId": 4000214849,
+    "name": "mts_lit_010"
+  },
+  {
+    "definitionId": 1692238230,
+    "questId": 517754261,
+    "name": "critpath_act01_incursion_ql"
+  },
+  {
+    "definitionId": 1709303206,
+    "questId": 3189400938,
+    "name": "brn_lit_020"
+  },
+  {
+    "definitionId": 1716702216,
+    "questId": 1430375670,
+    "name": "yar_lit_010"
+  },
+  {
+    "definitionId": 1728335837,
+    "questId": 1298227672,
+    "name": "the_hive_stronghold_003_dqlp"
+  },
+  {
+    "definitionId": 1766520317,
+    "questId": 2290337702,
+    "name": "yar_lit_020"
+  },
+  {
+    "definitionId": 1796039128,
+    "questId": 2042316274,
+    "name": "critpath_act01_tomboftarsis_legendary_ql"
+  },
+  {
+    "definitionId": 1797490619,
+    "questId": 872917472,
+    "name": "yar_con_legendary"
+  },
+  {
+    "definitionId": 1839123605,
+    "questId": 2409953329,
+    "name": "subplot_triplethreat_expedition01_legendary_ql"
+  },
+  {
+    "definitionId": 1849044511,
+    "questId": 3017518434,
+    "name": "mts_con_legendary"
+  },
+  {
+    "definitionId": 1862348820,
+    "questId": 634639566,
+    "name": "yar_con_generic"
+  },
+  {
+    "definitionId": 1867123614,
+    "questId": 1852599885,
+    "name": "yar_sty_020_favortoask_slp"
+  },
+  {
+    "definitionId": 1888002490,
+    "questId": 2361363728,
+    "name": "weekly_heartofrage_stronghold_dqlp"
+  },
+  {
+    "definitionId": 1894443857,
+    "questId": 538577504,
+    "name": "mts_lit_020"
+  },
+  {
+    "definitionId": 1898021172,
+    "questId": 3842670504,
+    "name": "subplot_triplethreat_expedition03_legendary_ql"
+  },
+  {
+    "definitionId": 1899574750,
+    "questId": 859925829,
+    "name": "temple_of_scar_stronghold_dqlp"
+  },
+  {
+    "definitionId": 1906267196,
+    "questId": 492085872,
+    "name": "brn_lit_010_slp"
+  },
+  {
+    "definitionId": 1910238489,
+    "questId": 1616220388,
+    "name": "yar_sty_030_cryforhelp_slp"
+  },
+  {
+    "definitionId": 1914901865,
+    "questId": 3820359316,
+    "name": "brn_sty_030_scenario"
+  },
+  {
+    "definitionId": 1921437181,
+    "questId": 442326295,
+    "name": "nexus_001_dqlp"
+  },
+  {
+    "definitionId": 1942606919,
+    "questId": 1222804572,
+    "name": "mts_sty_010_scenario_legendary"
+  },
+  {
+    "definitionId": 1950875012,
+    "questId": 3043150358,
+    "name": "subplot_emeraldabyss_expedition03_questlogic"
+  },
+  {
+    "definitionId": 1951185210,
+    "questId": 1781463529,
+    "name": "heart_of_rage_stronghold_dqlp"
+  },
+  {
+    "definitionId": 1960879413,
+    "questId": 1758479206,
+    "name": "yar_sty_040_overdue_slp"
+  },
+  {
+    "definitionId": 1961531757,
+    "questId": 3758508385,
+    "name": "cp_ft1_intro_010_ql"
+  },
+  {
+    "definitionId": 1969404097,
+    "questId": 4084990818,
+    "name": "mts_con_generic"
+  },
+  {
+    "definitionId": 1985158435,
+    "questId": 2496624579,
+    "name": "weekly_thesunken_stronghold_dqlp"
+  },
+  {
+    "definitionId": 1993297618,
+    "questId": 3425277640,
+    "name": "weekly_thehive_stronghold_003_dqlp"
+  },
+  {
+    "definitionId": 2002436541,
+    "questId": 1185046931,
+    "name": "subplot_triplethreat_expedition02_ql"
+  },
+  {
+    "definitionId": 2052245695,
+    "questId": 1611772658,
+    "name": "subplot_triplethreat_expedition03_ql"
+  },
+  {
+    "definitionId": 2055861666,
+    "questId": 3291801304,
+    "name": "brn_lit_030"
+  },
+  {
+    "definitionId": 2069743321,
+    "questId": 4101091907,
+    "name": "critpath_act02_expfortressofdawn_legendary_ql"
+  },
+  {
+    "definitionId": 2122237997,
+    "questId": 1705463368,
+    "name": "brn_sty_020_scenario"
+  }
+]

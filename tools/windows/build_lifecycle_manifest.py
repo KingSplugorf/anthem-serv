@@ -19,10 +19,20 @@ crates/blaze/src/main.rs
 crates/blaze/src/components/game_manager.rs
 crates/blaze/src/components/game_manager/local_lifecycle.rs
 crates/bigs/src/lib.rs
+crates/bigs/Cargo.toml
 crates/bigs/src/main.rs
 crates/bigs/src/state.rs
 crates/bigs/src/startup.rs
 crates/bigs/src/characters.rs
+crates/bigs/src/gear.rs
+crates/bigs/src/forge_items.rs
+crates/bigs/src/mtx.rs
+crates/bigs/src/progression.rs
+crates/bigs/src/progression.html
+crates/bigs/src/progression.js
+crates/bigs/src/progression_quests.json
+crates/bigs/tests/progression.rs
+crates/bigs/tests/workbench.browser.cjs
 launcher/main.js
 launcher/main_windows.js
 launcher/windows_profiles.js
@@ -53,6 +63,7 @@ tools/default_point.py
 tools/missions_inproc.py
 tools/launch_from_hub.py
 tools/end_expedition.py
+tools/save_editor.py
 tools/combat_patches/ai/navigation.py
 tools/combat_patches/ai/player_position.py
 tools/combat_patches/ai/player.py
@@ -75,6 +86,7 @@ tools/tests/test_direct_python.py
 tools/windows/update-lifecycle.ps1
 tools/windows/build_lifecycle_manifest.py
 tools/windows/README.md
+tools/windows/PROGRESSION.md
 '''.split()
 
 

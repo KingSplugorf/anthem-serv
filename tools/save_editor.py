@@ -68,7 +68,7 @@ def save_states(bigs: str, changes: dict[str, str], catalog: dict[int, dict]) ->
         quest = catalog[int(definition)]
         value = quest["completed"] if state == "terminee" else STATES[state]
         elements.append({"DefinitionId": int(definition), "RegisteredDefPropArray": [{"PropertyId": QUEST_STATE, "Value": value}]})
-    body = json.dumps({"personaId": PERSONA, "transactionId": 0, "persistenceJsonProp": json.dumps(elements)}).encode()
+    body = json.dumps({"personaId": PERSONA, "transactionId": 0, "source": "editor", "persistenceJsonProp": json.dumps(elements)}).encode()
     request = urllib.request.Request(f"{bigs}/api/character/{PERSONA}/persistence", data=body, method="PUT",
                                      headers={"content-type": "application/json"})
     with urllib.request.urlopen(request) as response:
@@ -98,7 +98,7 @@ button.petit{background:#2a3038}#barre{position:sticky;top:0;background:#14171c;
 <section><header><h2>Cosmétiques</h2><button class="petit" id="enregistrer-cosmetiques">Enregistrer les cosmétiques</button></header>
 <div style="padding:8px 12px"><label><input id="cosmetiques" type="checkbox"> Tout débloquer (<span id="nombre-cosmetiques">0</span> : décalcomanies, matériaux, bannières, armures, emotes, poses, arrivées)</label></div></section>
 <section><header><h2>Niveau du pilote</h2><button class="petit" id="enregistrer-niveau">Enregistrer le niveau</button></header>
-<div style="padding:8px 12px"><input id="niveau" type="number" min="1" step="1"></div></section>
+<div style="padding:8px 12px"><input id="niveau" type="number" min="1" max="30" step="1"></div></section>
 <div id="familles"></div>
 <script>
 const NOMS = {verrouillee: "Verrouillée", disponible: "Disponible", terminee: "Terminée"};
@@ -245,8 +245,8 @@ class Editor(http.server.BaseHTTPRequestHandler):
             return
         if self.path == "/niveau":
             level = json.loads(self.rfile.read(int(self.headers.get("content-length", 0)))).get("level")
-            if not isinstance(level, int) or level < 1:
-                self.reply_json(400, {"erreur": "niveau entier attendu, au moins 1"})
+            if type(level) is not int or not 1 <= level <= 30:
+                self.reply_json(400, {"erreur": "niveau entier attendu, de 1 à 30"})
                 return
             try:
                 self.reply_json(200, bigs_editor(self.bigs, "niveau", {"level": level}))

@@ -95,8 +95,13 @@ pub fn exo_unlocks(context: &Context) -> Vec<ExoUnlock> {
 }
 
 fn remaining_javelin_tokens(context: &Context) -> i32 {
-    let spent = i32::try_from(bought_exos(context).len()).unwrap_or(STARTING_JAVELIN_TOKENS);
-    (STARTING_JAVELIN_TOKENS - spent).max(0)
+    let state = context.state.lock().expect("state");
+    let bought = state.bought_offers();
+    let spent = PURCHASABLE_EXOS
+        .iter()
+        .filter(|exo| bought.contains(&exo.offer_id()))
+        .count() as i32;
+    (crate::progression::javelin_budget(state.data()) - spent).max(0)
 }
 
 fn javelin_tokens(amount: i32) -> Value {
@@ -143,7 +148,7 @@ pub async fn offers(State(context): State<Context>, RawQuery(query): RawQuery) -
     Json(json!({ "offers": offers }))
 }
 
-pub async fn buy_offers(State(context): State<Context>, body: Bytes) -> Json<Value> {
+pub async fn buy_offers(State(context): State<Context>, body: Bytes) -> crate::progression::Reply {
     let request: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
     let requested: Vec<&str> = request["offers"]
         .as_array()
@@ -151,23 +156,41 @@ pub async fn buy_offers(State(context): State<Context>, body: Bytes) -> Json<Val
         .flatten()
         .filter_map(|offer| offer["offerId"].as_str())
         .collect();
-    let newly_bought: Vec<&PurchasableExo> = PURCHASABLE_EXOS
-        .iter()
-        .filter(|exo| requested.contains(&exo.offer_id().as_str()))
-        .filter(|exo| !bought_exo_types(&context).contains(&exo.exo_type))
-        .take(usize::try_from(remaining_javelin_tokens(&context)).unwrap_or(0))
-        .collect();
-    let offer_ids: Vec<String> = newly_bought.iter().map(|exo| exo.offer_id()).collect();
-    context
+    let newly_bought = context
         .state
         .lock()
-        .expect("fichier d'état")
-        .buy_offers(&offer_ids.iter().map(String::as_str).collect::<Vec<_>>());
-    Json(json!({
+        .expect("state")
+        .transaction(|data| {
+            let mut bought: Vec<String> = data
+                .get("offres_achetees")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|id| id.as_str().map(str::to_owned))
+                .collect();
+            let spent = PURCHASABLE_EXOS
+                .iter()
+                .filter(|exo| bought.contains(&exo.offer_id()))
+                .count() as i32;
+            let remaining = (crate::progression::javelin_budget(data) - spent).max(0) as usize;
+            let new: Vec<_> = PURCHASABLE_EXOS
+                .iter()
+                .filter(|exo| {
+                    requested.contains(&exo.offer_id().as_str())
+                        && !bought.contains(&exo.offer_id())
+                })
+                .take(remaining)
+                .collect();
+            bought.extend(new.iter().map(|exo| exo.offer_id()));
+            data.insert("offres_achetees".into(), json!(bought));
+            Ok(new)
+        })
+        .map_err(crate::progression::error)?;
+    Ok(Json(json!({
         "currencyGain": [],
         "currencyBalances": [javelin_tokens(remaining_javelin_tokens(&context))],
         "unlockGains": newly_bought.iter().flat_map(|exo| exo.unlock_ids()).collect::<Vec<_>>(),
-    }))
+    })))
 }
 
 pub async fn owned_javelins(State(context): State<Context>) -> Json<Value> {

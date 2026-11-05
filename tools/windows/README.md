@@ -1,5 +1,10 @@
 # Native Windows development port (experimental)
 
+For the first persistent XP, earned-loot and local crafting implementation, see
+[Progression and crafting](PROGRESSION.md). With a save running, its workbench
+is at http://127.0.0.1:8080/progression. Native Forge crafting and ground-loot
+integration remain unverified.
+
 This is the first native Windows port of the **local, single-game** workflow.
 It does not use WSL, Wine, Proton, Bash, or GDB on Windows. It is developer
 setup, not a packaged end-user installer. On-device reports have confirmed native

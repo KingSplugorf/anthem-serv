@@ -73,6 +73,23 @@ pub struct StateFile {
 }
 
 impl StateFile {
+    pub(crate) fn data(&self) -> &Map<String, Value> {
+        &self.state
+    }
+
+    /// Publish the candidate only after the complete save has reached disk.
+    pub(crate) fn transaction<T>(
+        &mut self,
+        edit: impl FnOnce(&mut Map<String, Value>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut candidate = self.state.clone();
+        let result = edit(&mut candidate)?;
+        if let Some(path) = &self.path {
+            write_atomically(path, &candidate).map_err(|error| format!("Save failed: {error}"))?;
+        }
+        self.state = candidate;
+        Ok(result)
+    }
     pub fn in_memory() -> Self {
         Self {
             path: None,
@@ -82,10 +99,16 @@ impl StateFile {
 
     pub fn open(path: &str) -> Self {
         let path = PathBuf::from(path);
-        let state = std::fs::read(&path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
+        let state = match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+                panic!(
+                    "Damaged save {} was not overwritten: {error}",
+                    path.display()
+                )
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Map::new(),
+            Err(error) => panic!("Cannot read save {}: {error}", path.display()),
+        };
         Self {
             path: Some(path),
             state,
@@ -105,14 +128,6 @@ impl StateFile {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default()
-    }
-
-    pub fn commit_persistence(&mut self, changes: &[Value]) {
-        let mut saved = self.list(PERSISTENCE_KEY);
-        merge(&mut saved, changes);
-        self.state
-            .insert(PERSISTENCE_KEY.to_owned(), Value::Array(saved));
-        self.save();
     }
 
     pub fn saved_persistence(&self) -> Vec<Value> {
@@ -181,11 +196,6 @@ impl StateFile {
             .unwrap_or(false)
     }
 
-    pub fn set_pilot_level(&mut self, level: u64) {
-        self.state.insert(PILOT_LEVEL_KEY.to_owned(), json!(level));
-        self.save();
-    }
-
     pub fn cosmetics_unlocked(&self) -> bool {
         self.state
             .get(COSMETICS_UNLOCKED_KEY)
@@ -248,22 +258,6 @@ impl StateFile {
         self.uids(SALVAGED_ITEMS_KEY)
     }
 
-    pub fn salvage_items(&mut self, uids: &[u64]) {
-        let mut salvaged = self.salvaged_items();
-        for &uid in uids {
-            if !salvaged.contains(&uid) {
-                salvaged.push(uid);
-            }
-        }
-        let junk = self
-            .junk_items()
-            .into_iter()
-            .filter(|uid| !uids.contains(uid))
-            .collect();
-        self.set_uids(SALVAGED_ITEMS_KEY, salvaged);
-        self.set_uids(JUNK_ITEMS_KEY, junk);
-    }
-
     pub fn junk_items(&self) -> Vec<u64> {
         self.uids(JUNK_ITEMS_KEY)
     }
@@ -278,18 +272,6 @@ impl StateFile {
             junk.push(uid);
         }
         self.set_uids(JUNK_ITEMS_KEY, junk);
-    }
-
-    pub fn buy_offers(&mut self, offers: &[&str]) {
-        let mut bought = self.list(BOUGHT_OFFERS_KEY);
-        for offer in offers {
-            if !bought.iter().any(|known| known == offer) {
-                bought.push(json!(offer));
-            }
-        }
-        self.state
-            .insert(BOUGHT_OFFERS_KEY.to_owned(), Value::Array(bought));
-        self.save();
     }
 }
 

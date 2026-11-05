@@ -76,7 +76,7 @@ pub async fn viewed_unlocks(body: Bytes) -> Json<Value> {
     Json(json!({ "unlocks": unlocks }))
 }
 
-fn inventory_items(context: &Context) -> Vec<Value> {
+pub(crate) fn base_inventory(context: &Context) -> Vec<Value> {
     let (salvaged, junk, starting_only) = {
         let state = context.state.lock().expect("fichier d'état");
         (
@@ -93,14 +93,42 @@ fn inventory_items(context: &Context) -> Vec<Value> {
         .collect()
 }
 
-pub async fn inventory(State(context): State<Context>) -> Json<Value> {
-    let items = inventory_items(&context);
-    Json(json!({
+fn inventory_for(context: &Context, id: Option<&str>) -> Result<Vec<Value>, String> {
+    let mut items = base_inventory(context);
+    if let Some(id) = id {
+        items.extend(crate::progression::items(context, id)?);
+    }
+    let junk = context.state.lock().expect("state").junk_items();
+    for item in &mut items {
+        item["isJunk"] = json!(junk.contains(&item["uid"].as_u64().unwrap_or(0)));
+    }
+    Ok(items)
+}
+
+fn inventory_items(context: &Context) -> Vec<Value> {
+    inventory_for(context, crate::progression::active_id(context).as_deref()).unwrap_or_else(
+        |error| {
+            eprintln!("Inventory: {error}");
+            base_inventory(context)
+        },
+    )
+}
+
+pub async fn inventory(
+    State(context): State<Context>,
+    Path(params): Path<std::collections::HashMap<String, String>>,
+) -> crate::progression::Reply {
+    let id = params
+        .get("character")
+        .cloned()
+        .or_else(|| crate::progression::active_id(&context));
+    let items = inventory_for(&context, id.as_deref()).map_err(crate::progression::error)?;
+    Ok(Json(json!({
         "totalItemCount": items.len(),
         "items": items,
         "currencyItems": [],
         "accountAttributes": [],
-    }))
+    })))
 }
 
 fn field<'a>(request: &'a Value, name: &str) -> &'a Value {
@@ -152,53 +180,47 @@ pub async fn mark_junk(State(context): State<Context>, body: Bytes) -> Json<Valu
     Json(json!({}))
 }
 
-fn attached_uids(context: &Context) -> Vec<u64> {
-    owned_exo_types(context)
-        .into_iter()
-        .flat_map(|exo_type| uids_in(&loadout(context, exo_type)["gear"]["attachments"]))
-        .collect()
-}
-
-fn uids_in(attachments: &Value) -> Vec<u64> {
-    attachments
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|attachment| attachment["itemUID"].as_u64())
-        .collect()
-}
-
 /// InventorySalvageItemsRequest {PersonaId, CharacterId, ItemUIDs, Unlocks, …} ; réponse InventorySalvageItemsResponse {CurrencyItems, Unlocks}.
-pub async fn salvage_items(State(context): State<Context>, body: Bytes) -> Json<Value> {
+pub async fn salvage_items(
+    State(context): State<Context>,
+    Path((_persona, id)): Path<(u64, String)>,
+    body: Bytes,
+) -> crate::progression::Reply {
     let request: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-    let attached = attached_uids(&context);
-    let salvaged: Vec<u64> = uids(field(&request, "itemUIDs"))
-        .into_iter()
-        .filter(|&uid| !crate::gear::is_starting_gear(uid) && !attached.contains(&uid))
-        .collect();
-    context
-        .state
-        .lock()
-        .expect("fichier d'état")
-        .salvage_items(&salvaged);
-    Json(json!({ "currencyItems": [], "unlocks": [] }))
+    let mut ids = uids(field(&request, "itemUIDs"));
+    ids.sort_unstable();
+    ids.dedup();
+    if !ids.is_empty() {
+        crate::progression::salvage(&context, &id, format!("native-salvage/{ids:?}"), ids)
+            .map_err(crate::progression::error)?;
+    }
+    Ok(Json(json!({ "currencyItems": [], "unlocks": [] })))
 }
 
-pub async fn backpack() -> Json<Value> {
-    Json(json!({ "items": [], "currencyItems": [], "tickets": [] }))
+pub async fn backpack(
+    State(context): State<Context>,
+    Path(params): Path<std::collections::HashMap<String, String>>,
+) -> crate::progression::Reply {
+    let id = params
+        .get("character")
+        .cloned()
+        .or_else(|| crate::progression::active_id(&context));
+    Ok(Json(match id {
+        Some(id) => {
+            crate::progression::backpack(&context, &id).map_err(crate::progression::error)?
+        }
+        None => json!({ "items": [], "currencyItems": [], "tickets": [] }),
+    }))
 }
 
 /// InventoryResolveExpeditionBackpackResponse ; le butin de mission n'est pas gardé, rien n'est résolu.
-pub async fn resolve_expedition_backpack() -> Json<Value> {
-    Json(json!({
-        "sourceIds": [],
-        "targetIds": [],
-        "upgradedIds": [],
-        "currencyTypes": [],
-        "currencyCounts": [],
-        "unlockIds": [],
-        "currencies": [],
-    }))
+pub async fn resolve_expedition_backpack(
+    State(context): State<Context>,
+    Path((_persona, id)): Path<(u64, String)>,
+) -> crate::progression::Reply {
+    Ok(Json(
+        crate::progression::resolve(&context, &id).map_err(crate::progression::error)?,
+    ))
 }
 
 /// ValidateMetaMilestonesResponse.
@@ -360,7 +382,7 @@ fn loadout_id(exo_type: i32) -> String {
     (exo_type + 1).to_string()
 }
 
-fn owned_exo_types(context: &Context) -> Vec<i32> {
+pub(crate) fn owned_exo_types(context: &Context) -> Vec<i32> {
     let mut exo_types = vec![STARTING_EXO_TYPE];
     exo_types.extend(crate::mtx::bought_exo_types(context));
     exo_types

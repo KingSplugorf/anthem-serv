@@ -12,7 +12,7 @@
     },
     {
       "path": "Cargo.lock",
-      "sha256": "d9a34ad118fb7919edee3821afe19f24138b92d8359b44d1726ce52830c6b781"
+      "sha256": "60fa883e2fb660fe82395ae7fb3b9a315272b5c0507c20d617867650c2d2b631"
     },
     {
       "path": "crates/blaze/Cargo.toml",
@@ -36,7 +36,11 @@
     },
     {
       "path": "crates/bigs/src/lib.rs",
-      "sha256": "5a024debe2f974c59a01335630ff7083dc4a9aa54ba64e0e60b55e5f84563f2a"
+      "sha256": "60aca026a24019c01c434653ec83ed1ead74f4fcaa32d630e81ea4ea83c940c3"
+    },
+    {
+      "path": "crates/bigs/Cargo.toml",
+      "sha256": "3539c12d61908d8a3e5fd9fb25c1abc9dd02dcaead1c645642d826564fd6ffe0"
     },
     {
       "path": "crates/bigs/src/main.rs",
@@ -44,15 +48,51 @@
     },
     {
       "path": "crates/bigs/src/state.rs",
-      "sha256": "9f417a5a2535767974e40d6eb4ea4d62817e2a243b3add5d144ca218f7101456"
+      "sha256": "9653d26883798ecf1500dc0fb2ddaac618ec06358eaa1762cd61dcf566ec5870"
     },
     {
       "path": "crates/bigs/src/startup.rs",
-      "sha256": "c485dadfa0f1b980dddcf1be4c2f25379156a04d7f143c793559acd92bf07566"
+      "sha256": "5ec6660560917b994d9f647fdd2a854cdd5f153ec2d239f8a6c43e7c36241ee1"
     },
     {
       "path": "crates/bigs/src/characters.rs",
-      "sha256": "c4a01884202dab1fb6c683d3a6ecf911a4a05ef78abef23b4c83bed7367a2ccc"
+      "sha256": "d7d59a8b563aecb70d8abe395bccb5dcacc9585efb11b4a104d81d9a38d3aa43"
+    },
+    {
+      "path": "crates/bigs/src/gear.rs",
+      "sha256": "ce3a37ab997a1aac729f79592ded741482584831da13661a4d2ac66cccd69312"
+    },
+    {
+      "path": "crates/bigs/src/forge_items.rs",
+      "sha256": "cf8a4c0dfdfd51ba58b2787d3729d67a0206c9bbd712a40c458da34734edee31"
+    },
+    {
+      "path": "crates/bigs/src/mtx.rs",
+      "sha256": "911490a3129adc1ef4f065f2867af917f5cc7209bf79c4906f35892320f83f70"
+    },
+    {
+      "path": "crates/bigs/src/progression.rs",
+      "sha256": "713a88d65bbfd6971d9aeee86bc1028366f781dc5f8d18ac63c9ddfaf8cf8b2f"
+    },
+    {
+      "path": "crates/bigs/src/progression.html",
+      "sha256": "e6d2da461dfdba8c4cff443e55456e5b54c23eaec07c6a0cd779a9c03643d994"
+    },
+    {
+      "path": "crates/bigs/src/progression.js",
+      "sha256": "2172b64632c07f4c8cfdda95f00a9051a6a7b839fefcfc89ca4df2c6d2ce74a2"
+    },
+    {
+      "path": "crates/bigs/src/progression_quests.json",
+      "sha256": "7d0fb0033002e1d393480bbda04f5aa5764c8ec5389e10125fa474e7ddb86d9e"
+    },
+    {
+      "path": "crates/bigs/tests/progression.rs",
+      "sha256": "d4cb80b06246f4c3c9118bfb060b1a86c1adab88869fe72c331930c3b896648c"
+    },
+    {
+      "path": "crates/bigs/tests/workbench.browser.cjs",
+      "sha256": "9849b60ba5ee3d169d223450921eae19b8ae46858964435518e4a259c81f3830"
     },
     {
       "path": "launcher/main.js",
@@ -175,6 +215,10 @@
       "sha256": "543abcdf5ad375e6b72368fd9b9c44f09f4f9834f72b00c5f6ef27d51a4422c9"
     },
     {
+      "path": "tools/save_editor.py",
+      "sha256": "038da25201790f78b4125e494aad44c8673d225d0d3bd1b12295c5e78e15c5c1"
+    },
+    {
       "path": "tools/combat_patches/ai/navigation.py",
       "sha256": "4708e3952d358654e1e84bb71856aa1b35f1d92002ffc6f838ed4583d2eb982c"
     },
@@ -256,11 +300,15 @@
     },
     {
       "path": "tools/windows/build_lifecycle_manifest.py",
-      "sha256": "bd97e666e1ba3c99f2bdaaed9239e282f068cad39c54a2d1fdf6d97e13cb1584"
+      "sha256": "4c04017fc1fd450eb6492c9d77d48f9bb93e9d0adb7e258eb67980753ae8c8b8"
     },
     {
       "path": "tools/windows/README.md",
-      "sha256": "27f77c29cfd1dee0d8d60a87e7f7879341a1d15acc2ecb1b081e58e70de4e210"
+      "sha256": "7b148309a8e2bae467587dff6384fb58c07cffefe2ca026b9bc3be96f9582299"
+    },
+    {
+      "path": "tools/windows/PROGRESSION.md",
+      "sha256": "89caa5ca95b5b84ba6d0e28f48c8dbcd97fad63131e5a95b4d0500d38143b977"
     }
   ]
 }
