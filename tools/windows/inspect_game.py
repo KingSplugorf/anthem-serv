@@ -7,7 +7,9 @@ No game assets or full executable contents are included in the report.
 import argparse
 import hashlib
 import json
+import mmap
 from pathlib import Path
+import re
 import struct
 
 SITES = {
@@ -20,6 +22,42 @@ SITES = {
     "end_expedition": (0x1481F1482, "7456", "744e"),
     "end_expedition_callback": (0x1481F14D2, "b2014889f9ff5718", "b2014889f9ff5718"),
 }
+
+
+def tls_clues(source):
+    """Collect bounded static string clues, without loading or modifying the PE."""
+    stacks = {
+        "DirtySDK/ProtoSSL": ("protossl",),
+        "Windows Schannel": ("schannel", "initializesecuritycontext", "acquirecredentialshandle"),
+        "OpenSSL-compatible API": ("openssl", "boringssl", "ssl_ctx_", "ssl_get_verify_result"),
+        "mbedTLS": ("mbedtls",),
+        "wolfSSL": ("wolfssl",),
+    }
+    terms = ("certificate", "cacert", "cafile", "capath", "x509", "truststore",
+             "sslcert", "ssl.cert", "certverify", "certgetcertificatechain")
+    found, priority, ordinary, seen = set(), [], [], set()
+    matches = 0
+    with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as data:
+        for pattern, encoding in ((rb"[\x20-\x7e]{6,512}", "ascii"),
+                                  (rb"(?:[\x20-\x7e]\x00){6,512}", "utf-16le")):
+            for match in re.finditer(pattern, data):
+                text = match.group().decode(encoding)
+                lower = text.lower()
+                markers = {name for name, needles in stacks.items() if any(term in lower for term in needles)}
+                if not markers and not any(term in lower for term in terms):
+                    continue
+                found.update(markers)
+                matches += 1
+                if text in seen:
+                    continue
+                bucket = priority if markers else ordinary
+                if len(bucket) < 40:
+                    bucket.append(dict(file_offset=hex(match.start()), encoding=encoding, text=text))
+                    seen.add(text)
+    samples = priority + ordinary
+    return dict(candidate_stacks=sorted(found), matching_string_occurrences=matches,
+                samples=samples, samples_limited=matches > len(samples),
+                warning="Static string clues only: presence does not prove runtime use or certificate trust; absence does not rule it out.")
 
 
 def inspect(executable):
@@ -71,7 +109,7 @@ def inspect(executable):
             sites[name] = entry
         return dict(file=Path(executable).name, size=size, sha256=digest, machine=hex(machine),
                     image_base=hex(base), image_size=image_size, dynamic_base=bool(flags & 0x40),
-                    sections=sections, patch_sites=sites,
+                    sections=sections, patch_sites=sites, tls_diagnostics=tls_clues(source),
                     warning="Static layout only; this report does not validate decrypted runtime code or gameplay")
 
 
@@ -81,6 +119,7 @@ def main():
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     output = args.output or args.executable.with_name(args.executable.stem + "-layout.json")
+    print("Scanning executable layout and TLS strings (read-only)...", flush=True)
     output.write_text(json.dumps(inspect(args.executable), indent=2) + "\n", encoding="utf-8")
     print(output)
 

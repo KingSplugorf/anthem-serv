@@ -70,6 +70,11 @@ py -3 tools/windows/inspect_game.py 'C:\Games\Anthem\Anthem.exe' --output Anthem
 
 Share `Anthem-layout.json`. The report includes the SHA-256, PE sections,
 preferred image base, ASLR flag, and a few bytes at mission patch/hook sites.
+It also includes bounded ASCII/UTF-16 string excerpts related to TLS libraries
+and certificate handling, with file offsets. These are static clues only and do
+not establish which TLS stack is active or whether the development certificate
+is trusted. The scan memory-maps the executable read-only and does not load it
+as a program; large files may take a while to scan.
 It contains no full executable or game assets. Packed executable code may have
 no meaningful bytes until runtime, so matching this report alone does not
 establish runtime compatibility.
