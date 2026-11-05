@@ -1,8 +1,12 @@
 """Usage : python3 -I death.py PID {poser|retirer|etat} : dévie le relais client 0x14096b9a0 (jmp 0x1480e8810, mise à jour d'une arme cliente, fil client, à chaque image) vers le code mort5 (0x142b29800), qui vide les 8 cases {composant, vie, état} de 0x153737f00 et appelle pour chacune 0x1408b8730(ClientCombatPlaceableHealthComponent vivant, vie, état) (barre, OnDamaged, destruction à l'état 2), maximum mis à 1 s'il n'a jamais été posé ; les cases sont remplies par health_follow.py. Les objets destructibles n'ont pas de réplication serveur active ; la vie et la mort des personnages passent par la réplication native (published_health.py)."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from process_memory import open_memory
+
 import os
 import struct
-import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STUB = 0x14096B9A0
@@ -18,7 +22,7 @@ def jump(target: int) -> bytes:
 
 def main() -> None:
     pid, action = int(sys.argv[1]), sys.argv[2]
-    memory = open(f"/proc/{pid}/mem", "r+b", buffering=0)
+    memory = open_memory(pid, "r+b")
 
     def read(address: int, size: int) -> bytes:
         memory.seek(address)

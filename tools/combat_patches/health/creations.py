@@ -1,8 +1,12 @@
 """Usage : python3 -I creations.py PID {poser|retirer|etat} : journalise chaque ServerDylanSimpleHealthComponent et ClientDylanSimpleHealthComponent construit (fins des constructeurs 0x148ad5e52 et 0x140cbca84 déviées vers 0x142b28400) dans un anneau de 64 pointeurs en 0x153737c50, compteur en 0x153737c40 ; lu par health_follow.py."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from process_memory import open_memory
+
 import os
 import struct
-import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CODE_ADDRESS = 0x142B28400
@@ -16,7 +20,7 @@ def jump(site: int, target: int) -> bytes:
 
 def main() -> None:
     pid, action = int(sys.argv[1]), sys.argv[2]
-    memory = open(f"/proc/{pid}/mem", "r+b", buffering=0)
+    memory = open_memory(pid, "r+b")
 
     def read(address: int, size: int) -> bytes:
         memory.seek(address)

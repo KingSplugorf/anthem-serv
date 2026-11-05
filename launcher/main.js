@@ -1,3 +1,6 @@
+if (process.platform === "win32") {
+  require("./main_windows");
+} else {
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
@@ -230,4 +233,6 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     stopServices();
     app.quit();
   });
+}
+
 }

@@ -1,8 +1,12 @@
 """Usage : python3 -I tools/missions_inproc.py PID [--verifier] : passe en mémoire le type de serveur des points de départ de transition de Dedicated (1) à InProc (0), pour que le client héberge lui-même les missions comme Fort Tarsis ; les entrées sont retrouvées par leur RegionHash et le nom de leur point de départ (data/game/root_description.json)."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from process_memory import open_memory, writable_regions as process_regions
+
 import json
 import struct
-import sys
 
 import numpy
 
@@ -26,13 +30,10 @@ def transition_states(node):
 
 
 def writable_regions(pid):
-    with open(f"/proc/{pid}/maps") as maps:
-        for line in maps:
-            addresses, permissions = line.split()[:2]
-            start, end = (int(part, 16) for part in addresses.split("-"))
-            if permissions.startswith("rw") and end - start <= MAXIMUM_REGION:
-                for piece in range(start, end, READ_PIECE):
-                    yield piece, min(end, piece + READ_PIECE + PIECE_OVERLAP)
+    for start, end in process_regions(pid):
+        if end - start <= MAXIMUM_REGION:
+            for piece in range(start, end, READ_PIECE):
+                yield piece, min(end, piece + READ_PIECE + PIECE_OVERLAP)
 
 
 def name_at(memory, pointer):
@@ -48,7 +49,7 @@ def main():
     states = list(transition_states(json.load(open(DESCRIPTION))))
     names = {state["StartPointName"] for state in states if state["ServerType"] == SERVER_TYPE_DEDICATED}
     hashes = numpy.array(sorted({state["RegionHash"] for state in states}), dtype=numpy.uint32)
-    memory = open(f"/proc/{pid}/mem", "r+b", buffering=0)
+    memory = open_memory(pid, "r+b")
     found = {SERVER_TYPE_IN_PROC: 0, SERVER_TYPE_DEDICATED: 0}
     for start, end in writable_regions(pid):
         try:

@@ -1,5 +1,10 @@
 """Accès à la mémoire du jeu (/proc/PID/mem) et recherche d'objets par table virtuelle, partagés par les correctifs : Process.instances lit par blocs de 16 Mo répartis sur 4 fils (environ 10 s pour 9 Go). Constantes des composants de santé et des personnages serveur et client, position d'entité (ServerDylanCharacter +0x1b0, ClientDylanCharacter +0x1e0) pour l'appariement de health_follow.py. La recopie de la vie qui donnait son nom au fichier est remplacée par la réplication native (published_health.py)."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from process_memory import open_memory, read_at, writable_regions as process_regions
+
 import os
 import struct
 from concurrent.futures import ThreadPoolExecutor
@@ -20,7 +25,7 @@ SCAN_THREADS = 4
 class Process:
     def __init__(self, pid: int) -> None:
         self.pid = pid
-        self.memory = open(f"/proc/{pid}/mem", "r+b", buffering=0)
+        self.memory = open_memory(pid, "r+b")
 
     def read(self, address: int, size: int) -> bytes:
         if not 0x10000 <= address < 1 << 47:
@@ -47,31 +52,25 @@ class Process:
         self.write(address, struct.pack("<f", value))
 
     def regions(self) -> list[tuple[int, int]]:
-        result = []
-        for line in open(f"/proc/{self.pid}/maps"):
-            addresses, permissions = line.split()[:2]
-            start, end = (int(value, 16) for value in addresses.split("-"))
-            if permissions.startswith("rw") and start < 1 << 47:
-                result.append((start, end))
-        return result
+        return [(start, end) for start, end in process_regions(self.pid) if start < 1 << 47]
 
     def instances(self, tables: list[int], regions: list[tuple[int, int]]) -> tuple[dict[int, list[int]], set[tuple[int, int]]]:
         wanted = numpy.array(tables, dtype="<u8")
         pieces = [(region, start, min(CHUNK, region[1] - start)) for region in regions for start in range(region[0], region[1], CHUNK)]
 
         def scan(share: list[tuple[tuple[int, int], int, int]]) -> list[tuple[tuple[int, int], int, int]]:
-            descriptor = os.open(f"/proc/{self.pid}/mem", os.O_RDONLY)
+            memory = open_memory(self.pid, "rb")
             hits = []
             try:
                 for region, start, size in share:
                     try:
-                        data = os.pread(descriptor, size, start)
+                        data = read_at(memory, start, size)
                     except OSError:
                         continue
                     words = numpy.frombuffer(data, dtype="<u8", count=len(data) // 8)
                     hits.extend((region, start + 8 * int(index), int(words[index])) for index in numpy.flatnonzero(numpy.isin(words, wanted)))
             finally:
-                os.close(descriptor)
+                memory.close()
             return hits
 
         found = {table: [] for table in tables}

@@ -1,8 +1,12 @@
 """Usage : python3 -I server_sections.py PID {poser|retirer|etat} : pose les rappels serveur des sections A et B du flux d'impacts (0x140b3cb00), dont les gestionnaires d'origine (0x140a67b30 pour A ; 0x148901220 pour B, qui n'applique un coup que s'il retrouve l'explosion créée côté serveur, sinon le met en attente) ne font aucun dégât sur le serveur interne : A (mêlée, rappel [0x14475a4c8]/[0x14475a4d0], enregistrement +0x20 = entité touchée) et B (explosion, rappel [0x14475a4d8]/[0x14475a4e0], enregistrement +0x00 = poignée dont [0] = entité touchée + 8). Les rappels d'origine sont remplacés et gardés en 0x142b29ac0 pour « retirer » ; la pose est refusée tant que le serveur ne les a pas enregistrés (fonction nulle). Le code sections2.s (0x142b2a200) construit un impact ordinaire (+0x38 poignée, +0x40 tireur nul, +0xa0 montant fixe 6000) et appelle le rappel d'impacts courant [0x144759e70] (code de server_health.py, qui doit être posé) avec rcx = 2, marque des sections : impacts.s ne leur applique pas le dégât de l'arme active et garde l'ancien calcul (bonus du joueur). Entrée de l'explosion en +0x80. Une ancienne version du code en service (explosion en +0x57) se retire d'abord, puis se remplace."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from process_memory import open_memory
+
 import os
 import struct
-import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CODE_ADDRESS = 0x142B2A200
@@ -18,7 +22,7 @@ CODE = open(os.path.join(HERE, "sections2.bin"), "rb").read()
 
 def main() -> None:
     pid, action = int(sys.argv[1]), sys.argv[2]
-    memory = open(f"/proc/{pid}/mem", "r+b", buffering=0)
+    memory = open_memory(pid, "r+b")
 
     def read(address: int, size: int) -> bytes:
         memory.seek(address)

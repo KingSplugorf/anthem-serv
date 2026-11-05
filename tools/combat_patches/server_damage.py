@@ -1,8 +1,12 @@
 """Usage : python3 -I tools/combat_patches/server_damage.py PID {poser|retirer|etat} : pose un rappel serveur d'impacts (absent de l'exécutable client) en 0x144759e68/0x144759e70 ; pour chaque impact reçu du client, il applique à la cible (structure +0x38 -> entité) le montant +0xa0 via 0x140c86ef0, après vérification des pointeurs et du montant (0 < x < 100000)."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from process_memory import open_memory
+
 import os
 import struct
-import sys
 
 CODE_ADDRESS = 0x142B27F00
 CALLBACK_OBJECT = 0x144759E68
@@ -12,7 +16,7 @@ CODE = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "callback",
 
 def main() -> None:
     pid, action = int(sys.argv[1]), sys.argv[2]
-    memory = open(f"/proc/{pid}/mem", "r+b", buffering=0)
+    memory = open_memory(pid, "r+b")
 
     def read(address: int, size: int) -> bytes:
         memory.seek(address)

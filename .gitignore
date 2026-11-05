@@ -7,3 +7,5 @@
 /game.conf
 /game.conf.avant
 __pycache__/
+
+/.venv-windows/

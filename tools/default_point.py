@@ -1,8 +1,12 @@
 """Usage : python3 -I tools/default_point.py PID POINT : fait pointer DefaultTransitionPoint (+0x30) et DefaultTransitionStartPointName (+0x38) du TransitionLevelDescriptionComponent du niveau racine (DefaultServerType 1 en +0x40) vers la chaîne du point de départ POINT déjà présente dans sa table de points (entrée retrouvée par son RegionHash), pour que le serveur interne démarre à ce point sans allocation. python3 -I tools/default_point.py PID --quetes : relève ces composants et, pour chaque quête de rootquestinfocollection, l'adresse de la chaîne de son point de lancement (TransitionPoint de son DylanEcoQuestMapMarkerSetting, data/game/globals/enumerations/ecoquestmapmarkersettingsglobalasset.json), puis écrit data/quest_points_PID.json (adresses propres à ce processus), que tools/gdb_active_mission.gdb lit au lancement d'une mission pour démarrer au point de la quête."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from process_memory import open_memory, writable_regions as process_regions
+
 import json
 import struct
-import sys
 
 import numpy
 
@@ -43,13 +47,10 @@ def quest_points():
 
 
 def writable_regions(pid):
-    with open(f"/proc/{pid}/maps") as maps:
-        for line in maps:
-            addresses, permissions = line.split()[:2]
-            start, end = (int(part, 16) for part in addresses.split("-"))
-            if permissions.startswith("rw") and end - start <= MAXIMUM_REGION:
-                for piece in range(start, end, READ_PIECE):
-                    yield piece, min(end, piece + READ_PIECE + PIECE_OVERLAP)
+    for start, end in process_regions(pid):
+        if end - start <= MAXIMUM_REGION:
+            for piece in range(start, end, READ_PIECE):
+                yield piece, min(end, piece + READ_PIECE + PIECE_OVERLAP)
 
 
 def text_at(memory, pointer):
@@ -117,7 +118,7 @@ def record_quest_points(pid, memory):
 
 def main():
     pid, point = int(sys.argv[1]), sys.argv[2]
-    memory = open(f"/proc/{pid}/mem", "r+b", buffering=0)
+    memory = open_memory(pid, "r+b")
     if point == "--quetes":
         record_quest_points(pid, memory)
         return

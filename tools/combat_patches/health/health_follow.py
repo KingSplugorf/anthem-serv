@@ -1,9 +1,13 @@
 """Usage : python3 -I health_follow.py PID [--duree SECONDES] : recopie le bouclier des ennemis et suit les objets destructibles, que le serveur ne réplique pas. La vie et la mort des personnages passent par l'ApplyDamage natif et la réplication native (damage.py, published_health.py). Bouclier : tient la liste des composants de santé serveur et clients (inventaire complet au démarrage puis toutes les 10 min, créations lues dans l'anneau de creations.py), apparie chaque serveur à sa copie cliente et recopie, toutes les 0,5 s, la valeur du bouclier serveur ([[ServerRegeneratingShieldComponent+0x50]]) dans la copie cliente ([[ClientRegeneratingShieldComponent+0x58]] +0 et +0xc). Appariement : d'abord par ordre de création (l'anneau de creations.py enregistre chaque ServerDylanSimpleHealthComponent immédiatement suivi de sa copie cliente, mêmes données +0x10 ; les 64 dernières créations sont relues au démarrage). Les paires établies sont gardées tant que les deux composants vivent ; une adresse revue dans l'anneau est un nouvel objet et ses anciennes paires sont oubliées. À défaut, l'appariement se fait par position (mêmes données +0x10, entité la plus proche à moins de 6 : ServerDylanCharacter +0x1b0 / ClientDylanCharacter +0x1e0). Objets destructibles touchés (anneau 0x153737f80 de impacts.s, server_health.py) : apparie chaque ServerCombatPlaceableHealthComponent à sa copie cliente (mêmes données +0x10, plus petite distance entre les triplets de flottants des 0x400 premiers octets des deux entités ; nouvel inventaire au plus toutes les 15 s si la copie manque) et, à chaque changement de vie ou d'état serveur, remplit une case {composant client, vie, état} de 0x153737f00 lue par death.py. Note une fois chaque table d'entité touchée sans composant de santé connu (anneau 0x153737fd0)."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from process_memory import alive as process_alive
+
 import math
 import os
 import struct
-import sys
 import threading
 import time
 
@@ -242,7 +246,7 @@ def main() -> None:
     next_inventory = time.monotonic() + FULL_INVENTORY_SECONDS
     next_pairing = 0.0
     current: list[tuple[int, int]] = []
-    while time.monotonic() < deadline and os.path.exists(f"/proc/{pid}"):
+    while time.monotonic() < deadline and process_alive(pid):
         try:
             pointers, last, overflow = ring_entries(process, last)
         except OSError:

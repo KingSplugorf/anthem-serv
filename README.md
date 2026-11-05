@@ -7,6 +7,8 @@ This project was made to learn and understand how things work. It contains no co
 
 # Anthem, private server: what you need to play
 
+Native Windows development support is experimental. See [Windows setup and port status](tools/windows/README.md) for prerequisites, local startup, and remaining validation.
+
 anthem-serveur: launch and play.
 
 ## Certificate, once

@@ -4,7 +4,7 @@
   "description": "Lanceur du serveur privé Anthem : choix local ou serveur central, puis lancement du jeu avec ses correctifs",
   "main": "main.js",
   "scripts": {
-    "start": "electron . 2>&1 | grep --line-buffered -v '^Fontconfig warning'",
+    "start": "electron .",
     "test": "node --test"
   },
   "devDependencies": {

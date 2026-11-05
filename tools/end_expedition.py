@@ -1,8 +1,12 @@
 """Usage : python3 -I tools/end_expedition.py PID [poser|retirer|etat] : fait aboutir « End Freeplay / End Expedition » sur le serveur interne. Le maintien déclenche RequestLeave de LeaveExpeditionEntity (globals/transitions/prefabs/triggerendexpedition_prefab) ; ClientLeaveExpeditionEntity (0x14095ee10) poste ExpeditionRequestLeaveMessage, que ServerLeaveExpeditionEntity (0x1481f36e0) transmet à l'exécutant du ServerExpeditionManager ([[0x1446c80e0]+0x48]) ; celui du jeu libre (table 0x143a49910, départ 0x1481f1460) cherche l'expédition du joueur dans sa liste ([exécutant+0x100], fiches ExpeditionDto de 0x48 octets) et, faute d'expédition, sort sans prévenir : ni Success ni Failed. « poser » fait répondre Success quand le joueur n'a pas d'expédition (0x1481f1482 je 0x1481f14da -> je 0x1481f14d2, rappel 0x140a6cea0 avec 1) : Success mène au proxy d'expédition (0x140a65960, événement 0xfba71aa8) qui, sans GUID d'expédition, transfère le joueur au point par défaut du gestionnaire (« VictoryPose_InProc »). « etat » lit le nombre d'expéditions de l'exécutant."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from process_memory import open_memory
+
 import os
 import struct
-import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from launch_from_hub import apply  # noqa: E402
@@ -42,7 +46,7 @@ def state(memory):
 def main():
     pid = int(sys.argv[1])
     action = sys.argv[2] if len(sys.argv) > 2 else "poser"
-    with open(f"/proc/{pid}/mem", "r+b" if action != "etat" else "rb", buffering=0) as memory:
+    with open_memory(pid, "r+b" if action != "etat" else "rb") as memory:
         if action == "etat":
             print(state(memory))
             return

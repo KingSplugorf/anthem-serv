@@ -1,8 +1,12 @@
 """Usage : python3 -I player_position.py PID [--duree SECONDES] : recopie 20 fois/s la position réelle du player dans son personnage serveur. Elle n'écrit que dans le personnage du player local : celui dont le ServerPlayer ([personnage+0x2b8]) est sur une connexion du ServerPeer qui passe par la socket mémoire (client dans ce processus, player_list.local_characters), vérifié chaque seconde ; jamais dans celui d'un player distant, ni quand le serveur est illisible (le personnage gardé est alors tenu pour invalide et recherché de nouveau). Le ServerDylanCharacter du player (écrit par target.py en 0x142b2abf0) garde en +0x1b0 sa position d'apparition : le serveur interne ne reçoit pas le déplacement du player, donc les IA (but de MoveToPoint, RangeToTarget de target.s) visent un point figé. La position écrite est la translation de la transformation de la copie cliente du player (ClientDylanCharacter retrouvé par sa vie cliente en 0x142b2abe8, bloc [entité+0x58]), égale à son ClientDylanCharacterSimulationComponent ; à défaut, l'origine de visée serveur [[personnage+0x7a8]+0x150] abaissée de 6,4 m (relevé du 2026-10-31 21:5x : elle dérive de 3 m/s, player immobile, à 100 m du player, soupçonnée de faire annuler la réparation des Freelancers) ; elle est écrite, si ce composant appartient bien encore au personnage (même bloc de composants [composant+8] = [personnage+0x58] et présent dans sa liste, pour ne jamais écrire dans un personnage libéré), en +0x1b0 et dans la translation de la transformation de l'entité (bloc [personnage+0x58], ligne (octet +9 + 2 × octet +0xa) × 32 + 0x10, translation +0x30, lue par getTransform 0x146c94a20 et donc par TransformProvider_Entity des IA). Si le personnage gardé en 0x142b2abf0 n'est pas valide (nul au départ, sans attendre ; sinon pendant 3 s : table, composant de visée qui ne lui appartient plus : mort, réapparition, changement de zone), player.py le retrouve avec ses copies clientes en une seule recherche en mémoire et réécrit les trois cases ; après une recherche vaine, la suivante attend 3 s, puis le double à chaque échec, jusqu'à 60 s (hub après la mission)."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from process_memory import alive as process_alive
+
 import os
 import struct
-import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -71,7 +75,7 @@ def main() -> None:
     copies = 0
     search_at, retry = None, LOST_SECONDS
     checked, checked_at, is_local = 0, 0.0, False
-    while time.monotonic() < deadline and os.path.exists(f"/proc/{pid}"):
+    while time.monotonic() < deadline and process_alive(pid):
         try:
             player = process.qword(player.PLAYER_SLOT)
             try:
