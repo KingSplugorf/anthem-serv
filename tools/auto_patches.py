@@ -216,9 +216,13 @@ def apply_in_order(pid, patches, cancelled=lambda: False, children=None):
         if cancelled():
             return ()
         command = [sys.executable, "-X", "utf8", "-I", os.path.join(COMBAT, script), pid, "poser", *arguments]
+        if children is not None:
+            command.insert(4, os.path.join(TOOLS, 'mission_child.py'))
         result = (children.run(command, text=True, encoding='utf-8') if children is not None else
                   subprocess.run(command, capture_output=True, text=True, encoding="utf-8"))
         last_line = ((result.stdout + result.stderr).strip().splitlines() or [""])[-1]
+        if result.returncode and children is not None:
+            last_line = f'exit {result.returncode}\n' + (result.stdout + result.stderr).strip()[-16384:]
         print(f"{time.strftime('%H:%M:%S')} {script} : {last_line}", flush=True)
         if result.returncode:
             return patches[index:]

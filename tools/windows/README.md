@@ -454,6 +454,32 @@ not yet implemented; the diagnostics report saved freeplay state without changin
 
 ### Repeatable native expeditions
 
+Scoped Python processes launch the real interpreter directly using CPython's
+Windows venv handoff, preserving the selected virtual environment and NumPy.
+The job/start gate therefore owns the executing interpreter rather than a venv
+redirector that can create another process before assignment. Before playing,
+verify that the spawned PID is the executing PID and the venv remains selected:
+
+```powershell
+.\.venv-windows\Scripts\python.exe -X utf8 -I -m unittest discover -s .\tools\tests -p test_direct_python.py -v
+```
+
+Combat patch children emit `Patch interpreter ready` before importing their patch,
+capture a Python traceback if still running after 45 seconds, and fail for retry
+after 120 seconds. Failed output is retained in the expedition worker log. These
+messages distinguish a Python-level stall from failure to enter the interpreter.
+
+For a mission whose End Expedition flow remains blocked, the read-only command
+below exports the active expedition executor, candidate table slots and bounded
+code windows for comparison with the existing freeplay implementation:
+
+```powershell
+py -3 .\tools\windows\inspect_expedition.py --pid <running-game-pid>
+```
+
+It performs no remote calls, debugger attachment, memory writes or save changes.
+The raw slots/windows do not establish function boundaries or implement an exit.
+
 Native solo mode now keeps one mission debugger attached for the game session.
 Blaze assigns a fresh game/scenario ID to each expedition, retains the hub party,
 and ignores late exit messages for older expeditions. Exact retransmissions of a

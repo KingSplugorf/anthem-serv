@@ -2,6 +2,30 @@
 import ctypes as C
 import os
 import subprocess
+import sys
+import ntpath
+from pathlib import Path
+
+
+def direct_python(command, options):
+    """Own the interpreter itself, preserving Windows venv path initialization.
+
+    CPython's Windows venv redirector creates another process and its own job.
+    Use the same __PYVENV_LAUNCHER__ handoff that redirector uses, so -I and
+    venv site-packages remain intact without a wrapper escaping our start gate.
+    """
+    base = getattr(sys, '_base_executable', sys.executable)
+    if (os.name != 'nt' or not command or not base
+            or ntpath.normcase(str(command[0])) != ntpath.normcase(sys.executable)
+            or ntpath.normcase(base) == ntpath.normcase(sys.executable)):
+        return command, options
+    if not Path(base).is_file():
+        raise OSError(f'Base Python interpreter not found: {base}')
+    child_options = dict(options)
+    child_env = dict(os.environ if options.get('env') is None else options['env'])
+    child_env['__PYVENV_LAUNCHER__'] = sys.executable
+    child_options['env'] = child_env
+    return [base, *command[1:]], child_options
 
 
 class BasicLimits(C.Structure):
@@ -56,6 +80,7 @@ class ManagedProcess:
 
 
 def managed_spawn(command, **options):
+    command, options = direct_python(command, options)
     child = subprocess.Popen(command, stdin=subprocess.PIPE, start_new_session=True, **options)
     job = None
     try:

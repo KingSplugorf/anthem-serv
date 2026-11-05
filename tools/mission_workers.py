@@ -4,6 +4,7 @@ import threading
 import tempfile
 import time
 import locale
+from mission_jobs import direct_python
 
 
 class Children:
@@ -14,7 +15,9 @@ class Children:
     def start(self, command, **options):
         if self.cancelled():
             raise InterruptedError('Expedition was cancelled before child startup')
+        command, options = direct_python(command, options)
         child = subprocess.Popen(command, **options)
+        child._mission_command = tuple(command)
         with self.lock:
             self.children.add(child)
         return child
@@ -23,8 +26,8 @@ class Children:
         # File capture avoids waiting for pipe EOF after the direct process
         # exits, and needs no Windows communicate() reader threads on each poll.
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
-            child = self.start(command, stdout=output, stderr=errors, **options)
-            print(f'Patch child started: PID {child.pid}; {command}', flush=True)
+            child = self.start(command, stdin=subprocess.DEVNULL, stdout=output, stderr=errors, **options)
+            print(f'Patch child started: PID {child.pid}; {child._mission_command}', flush=True)
             deadline, timed_out = time.monotonic() + timeout, False
             try:
                 while child.poll() is None:

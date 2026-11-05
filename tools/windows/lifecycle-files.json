@@ -100,7 +100,7 @@
     },
     {
       "path": "tools/auto_patches.py",
-      "sha256": "1976868a827a32775bddbd27bfe828d94faa0f7d6a8437e8fb3fb3716ca4e30f"
+      "sha256": "0f264bf0486a9bf8a3b29e64a0ad94987ac965c687ca8f685035872c96f8373c"
     },
     {
       "path": "tools/mission_hooks.py",
@@ -124,7 +124,7 @@
     },
     {
       "path": "tools/mission_jobs.py",
-      "sha256": "d74a26d7788f051601903f4cf17635f84dca3a8214216d48a6805fc2b5389f08"
+      "sha256": "22fd62830feb153c8a8dd12ad0db8690922e5ce04708f4cd6686fc8c4fce263c"
     },
     {
       "path": "tools/mission_supervisor.py",
@@ -132,7 +132,11 @@
     },
     {
       "path": "tools/mission_workers.py",
-      "sha256": "f987aa204caf8b09cbde0c582f8b8925b359794ec61f4cce36457603a725d38f"
+      "sha256": "4d3c3a75604754848913850c2a64dcdaa4f97ed878894d58eebca3c0bdf1af91"
+    },
+    {
+      "path": "tools/mission_child.py",
+      "sha256": "99e452e836723ef0acc4840b75a3b687a59db6e530be0103b7c5137641aefddf"
     },
     {
       "path": "tools/windows_debugger.py",
@@ -199,16 +203,24 @@
       "sha256": "a4fc12fa828eff76d2526a2d4d0dd3854469d19158bb2acc4ac19b159ea4b852"
     },
     {
+      "path": "tools/windows/inspect_expedition.py",
+      "sha256": "459d309f6af4b37bbdcae9584bfc1ddb5f3891666f1e234fb3902542a6711551"
+    },
+    {
+      "path": "tools/tests/test_direct_python.py",
+      "sha256": "da7cf1e5ab95801959fb82ce367fbcbd8a8abb35bbd554d58e961fce56bfb265"
+    },
+    {
       "path": "tools/windows/update-lifecycle.ps1",
       "sha256": "ed1e3010984e7af4bfc3168fe8726ce6443b39d381d19555227a8d7ed5a95673"
     },
     {
       "path": "tools/windows/build_lifecycle_manifest.py",
-      "sha256": "81b6e8995c9e3ebadb7a4c032490bae50a77cf9899f0908bd02c638ac14069b8"
+      "sha256": "34766947046213111c1212c80e32b31fff061f014252bc0e3f5965752deaed48"
     },
     {
       "path": "tools/windows/README.md",
-      "sha256": "64bae5ba30f2a6b252c92fa86eeceb6125c5a9409e3ef05d713ea14f7ca73745"
+      "sha256": "1dfb759fe3c1b842cde3c427c134b845f5bceb4fa977d87101b6c7a22ddecb62"
     }
   ]
 }

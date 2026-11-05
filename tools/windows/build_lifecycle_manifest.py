@@ -42,6 +42,7 @@ tools/mission_lease.py
 tools/mission_jobs.py
 tools/mission_supervisor.py
 tools/mission_workers.py
+tools/mission_child.py
 tools/windows_debugger.py
 tools/windows_ca_loader.py
 tools/tls_client_diagnostics.py
@@ -58,6 +59,8 @@ tools/combat_patches/server_damage.py
 tools/windows/play-profile.ps1
 tools/windows/play-fresh.ps1
 tools/windows/inspect_mission.py
+tools/windows/inspect_expedition.py
+tools/tests/test_direct_python.py
 tools/windows/update-lifecycle.ps1
 tools/windows/build_lifecycle_manifest.py
 tools/windows/README.md
