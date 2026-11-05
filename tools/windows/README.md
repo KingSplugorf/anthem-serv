@@ -142,6 +142,36 @@ development certificate. An offline-launch configuration alone does not confirm
 certificate compatibility. TLS verification and the server's supported protocol
 versions are unchanged by these diagnostics.
 
+### Passive client-certificate diagnostic mode
+
+For the inspected executable SHA-256
+`63cbc85f17ebd5d9ede8d72cef07eff40945bf5000604b52d482812cbbcd0338`,
+the native debugger can observe the game's certificate-error logging instruction.
+It checks both the file hash and the in-memory instruction/format bytes before
+attaching, opens game memory read-only, and installs one execution breakpoint.
+It records the raw error code, hostname and certificate identity fields passed
+to that logging path. It does not call a CA loader or change any certificate
+validation result. Reference error labels are from a reference DirtySDK header
+and are not a substitute for the recorded raw code.
+
+Close any existing game/launcher session. From the repository root:
+
+```powershell
+$env:ANTHEM_TLS_DIAGNOSTICS = '1'
+try { npm.cmd --prefix .\launcher start }
+finally { Remove-Item Env:ANTHEM_TLS_DIAGNOSTICS -ErrorAction SilentlyContinue }
+```
+
+Click Play. Wait for `Win32 TLS diagnostics ready` in the launcher, then retry the
+connection in the game. Close the launcher and share the newest
+`data/tls_client_PID.json`. Each report identifies its diagnostic run, so a stale
+PID report cannot establish readiness. The report also contains a fixed 24 KiB
+code excerpt around the previously observed ProtoSSL API call region to help
+identify the CA-loading entry point; heap/session buffers and TLS private keys
+are not captured. The normal mission debugger hooks are inactive during this
+diagnostic session. Remove the environment flag (or use a fresh PowerShell
+window) before testing missions normally.
+
 Automated development checks from the repository root:
 
 ```powershell

@@ -14,6 +14,7 @@ import threading
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mission_hooks import MissionHooks, MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY
 from process_memory import open_memory, read_at
+from tls_client_diagnostics import TlsFailureHooks, TLS_FAILURE_SITE
 from windows_memory import kernel, check, modules
 
 DWORD, QWORD, HANDLE = C.c_uint32, C.c_uint64, C.c_void_p
@@ -58,7 +59,7 @@ class Event(C.Structure):
 class Context:
     """Windows AMD64 CONTEXT, explicitly aligned to 16 bytes (1232-byte ABI)."""
     OFFSETS = dict(dr0=72, dr1=80, dr2=88, dr3=96, dr6=104, dr7=112,
-                   rcx=128, rdx=136, rsp=152, rsi=168, rip=248)
+                   rcx=128, rdx=136, rbx=144, rsp=152, rsi=168, r12=216, rip=248)
 
     def __init__(self):
         self.storage = C.create_string_buffer(1232 + 15)
@@ -78,13 +79,20 @@ class Context:
         self.set("dr6", 0)
 
 
-def configure(context, addresses):
+def configure(context, addresses, *, watchpoint=3):
+    if not 1 <= len(addresses) <= 4:
+        raise ValueError("Expected one to four hardware breakpoints")
+    if watchpoint is not None and (not 0 <= watchpoint < len(addresses) or addresses[watchpoint] % 4):
+        raise ValueError("Four-byte watchpoint must exist and be aligned")
     if context.get("dr7") & 0xff:
         raise OSError("Thread already has hardware breakpoints; refusing to replace them")
-    for index, address in enumerate(addresses):
-        context.set(f"dr{index}", address)
+    for index in range(4):
+        context.set(f"dr{index}", addresses[index] if index < len(addresses) else 0)
     context.set("dr6", 0)
-    context.set("dr7", 0xD0000055)  # local DR0..3; DR3 write watch, length four
+    control = sum(1 << (index * 2) for index in range(len(addresses)))
+    if watchpoint is not None:
+        control |= 0xD << (16 + watchpoint * 4)  # write watch, length four
+    context.set("dr7", control)
 
 
 class AddressSpace:
@@ -119,7 +127,7 @@ def debug_api():
     return k
 
 
-def run(pid, stop):
+def run(pid, stop, *, tls_diagnostics=False):
     if os.name != "nt":
         raise OSError("Native Windows debugger requires 64-bit Windows")
     image_base, image_path = next(modules(pid))
@@ -128,19 +136,27 @@ def run(pid, stop):
     k = debug_api()
     threads, originals = {}, {}
     attached = False
-    with open_memory(pid) as memory:
-        hooks = MissionHooks(AddressSpace(memory), pid)
-        pointer, _ = hooks.starting_info()
-        if pointer % 4:
-            raise OSError("GameStartingInfo watchpoint is not aligned")
-        addresses = (MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY, pointer)
-        callbacks = (hooks.connect, hooks.startup, hooks.gate, hooks.playmode_write)
+    with open_memory(pid, "rb" if tls_diagnostics else "r+b") as memory:
+        if tls_diagnostics:
+            hooks = TlsFailureHooks(AddressSpace(memory), pid)
+            hooks.validate(image_path)
+            addresses, callbacks = (TLS_FAILURE_SITE,), (hooks.failure,)
+        else:
+            hooks = MissionHooks(AddressSpace(memory), pid)
+            pointer, _ = hooks.starting_info()
+            if pointer % 4:
+                raise OSError("GameStartingInfo watchpoint is not aligned")
+            addresses = (MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY, pointer)
+            callbacks = (hooks.connect, hooks.startup, hooks.gate, hooks.playmode_write)
         try:
             check(k.DebugActiveProcess(pid))
             attached = True
             check(k.DebugSetProcessKillOnExit(False))
             initial_breakpoint = True
-            hooks.log(f"attaché (Win32), GameStartingInfo {hooks.starting_info()}")
+            if tls_diagnostics:
+                hooks.log("attached for certificate diagnostics; mission hooks inactive; retry the game connection")
+            else:
+                hooks.log(f"attaché (Win32), GameStartingInfo {hooks.starting_info()}")
             while not stop.is_set():
                 event = Event()
                 if not k.WaitForDebugEvent(C.byref(event), 100):
@@ -163,7 +179,7 @@ def run(pid, stop):
                         context = Context()
                         check(k.GetThreadContext(handle, context.address))
                         originals[event.tid] = {name: context.get(name) for name in ("dr0", "dr1", "dr2", "dr3", "dr6", "dr7")}
-                        configure(context, addresses)
+                        configure(context, addresses, watchpoint=None if tls_diagnostics else 3)
                         check(k.SetThreadContext(handle, context.address))
                     elif event.code == 4:  # EXIT_THREAD
                         handle = threads.pop(event.tid, None)
@@ -179,13 +195,15 @@ def run(pid, stop):
                         disposition = NOT_HANDLED
                         if code == BREAKPOINT and initial_breakpoint:
                             initial_breakpoint = False
+                            if tls_diagnostics:
+                                hooks.mark_ready()
                             disposition = CONTINUE
                         elif code == SINGLE_STEP and event.tid in threads:
                             context = Context()
                             check(k.GetThreadContext(threads[event.tid], context.address))
-                            hits = context.get("dr6") & 15
+                            hits = context.get("dr6") & ((1 << len(callbacks)) - 1)
                             if hits:
-                                registers = {name: context.get(name) for name in ("rcx", "rdx", "rsi", "rsp", "rip")}
+                                registers = {name: context.get(name) for name in ("rcx", "rdx", "rbx", "rsi", "r12", "rsp", "rip")}
                                 disposition = CONTINUE
                                 try:
                                     for index, callback in enumerate(callbacks):
@@ -232,7 +250,7 @@ def main():
         stop.set()  # parent exited; detach instead of leaving the game debugged
     threading.Thread(target=listen, daemon=True).start()
     try:
-        run(int(sys.argv[1]), stop)
+        run(int(sys.argv[1]), stop, tls_diagnostics=os.environ.get("ANTHEM_TLS_DIAGNOSTICS") == "1")
     except KeyboardInterrupt:
         stop.set()
 

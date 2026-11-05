@@ -223,13 +223,13 @@ class DebuggerTests(unittest.TestCase):
 
 
 class DebuggerLifecycleTests(unittest.TestCase):
-    def exercise(self, fail_callback=False):
+    def exercise(self, fail_callback=False, tls_diagnostics=False):
         stop = threading.Event()
         k = Mock()
         hooks = Mock()
         hooks.starting_info.return_value = (0x20000, (0,0,0,0))
         if fail_callback:
-            hooks.connect.side_effect = OSError('hook read failed')
+            (hooks.failure if tls_diagnostics else hooks.connect).side_effect = OSError('hook read failed')
         contexts = {}
         dispositions = []
         events = [(3,None), (1,debugger.BREAKPOINT), (1,0xc0000005), (1,debugger.SINGLE_STEP)]
@@ -277,14 +277,21 @@ class DebuggerLifecycleTests(unittest.TestCase):
              patch.object(debugger,'modules',return_value=iter([(0x140000000,'Anthem.exe')])), \
              patch.object(debugger,'open_memory',return_value=io.BytesIO()), \
              patch.object(debugger,'MissionHooks',return_value=hooks), \
+             patch.object(debugger,'TlsFailureHooks',return_value=hooks), \
              patch.object(debugger,'debug_api',return_value=k):
             if fail_callback:
                 with self.assertRaisesRegex(OSError,'hook read failed'):
-                    debugger.run(123,stop)
+                    debugger.run(123,stop,tls_diagnostics=tls_diagnostics)
             else:
-                debugger.run(123,stop)
+                debugger.run(123,stop,tls_diagnostics=tls_diagnostics)
         self.assertEqual(dispositions,[debugger.CONTINUE,debugger.CONTINUE,debugger.NOT_HANDLED,debugger.CONTINUE])
-        hooks.connect.assert_called_once()
+        if tls_diagnostics:
+            hooks.failure.assert_called_once()
+            hooks.mark_ready.assert_called_once()
+            hooks.starting_info.assert_not_called()
+            hooks.validate.assert_called_once_with('Anthem.exe')
+        else:
+            hooks.connect.assert_called_once()
         k.DebugSetProcessKillOnExit.assert_called_once_with(False)
         k.DebugActiveProcessStop.assert_called_once_with(123)
         k.ResumeThread.assert_called_once_with(20)
@@ -299,6 +306,12 @@ class DebuggerLifecycleTests(unittest.TestCase):
 
     def test_hook_failure_still_continues_event_and_restores_threads(self):
         self.exercise(fail_callback=True)
+
+    def test_tls_mode_attaches_without_mission_state_and_restores_threads(self):
+        self.exercise(tls_diagnostics=True)
+
+    def test_tls_capture_failure_still_restores_threads(self):
+        self.exercise(fail_callback=True,tls_diagnostics=True)
 
 
 class CombatSelectionTests(unittest.TestCase):

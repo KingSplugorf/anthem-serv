@@ -6,10 +6,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
 from process_memory import open_memory, alive as process_alive
 
 import os
+import json
 import re
 import subprocess
 import time
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
@@ -81,6 +83,25 @@ def starting_info_ready(pid):
 
 def mission_log(pid):
     return os.path.join("data", f"active_mission_{pid}.txt")
+
+
+def wait_for_tls_diagnostics(pid, debugger, timeout=30, run_id=None):
+    deadline = time.monotonic() + timeout
+    report = os.path.join("data", f"tls_client_{pid}.json")
+    while alive(pid):
+        if debugger.poll() is not None:
+            raise RuntimeError("TLS debugger exited; inspect data/logs/gdb_active_mission.log")
+        try:
+            with open(report, encoding="utf-8") as source:
+                state = json.load(source)
+                if state.get("ready") and state.get("run_id") == run_id:
+                    return
+        except (FileNotFoundError, PermissionError, json.JSONDecodeError):
+            pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"TLS diagnostic breakpoint did not become ready within {timeout:g} seconds")
+        time.sleep(0.1)
+    raise RuntimeError("Game exited before TLS diagnostics became ready")
 
 
 def wait_for_mission_start(pid, start, debugger=None):
@@ -196,11 +217,22 @@ def main():
         return
     mission_log_start = os.path.getsize(mission_log(pid)) if os.path.exists(mission_log(pid)) else 0
     native = os.name == "nt"
+    tls_diagnostics = native and os.environ.get("ANTHEM_TLS_DIAGNOSTICS") == "1"
     debugger = ([sys.executable, "-X", "utf8", "-I", os.path.join(TOOLS, "windows_debugger.py"), pid]
                 if native else ["gdb", "-p", pid, "-batch", "-x", os.path.join(TOOLS, "gdb_active_mission.gdb")])
+    run_id = uuid.uuid4().hex if tls_diagnostics else None
+    debugger_env = {**os.environ, "ANTHEM_TLS_RUN_ID": run_id} if tls_diagnostics else None
     with open(os.path.join("data", "logs", "gdb_active_mission.log"), "a") as log:
         mission_debugger = subprocess.Popen(debugger, stdin=subprocess.PIPE if native else subprocess.DEVNULL,
-                                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True, env=debugger_env)
+    if tls_diagnostics:
+        wait_for_tls_diagnostics(pid, mission_debugger, run_id=run_id)
+        print("Win32 TLS diagnostics ready: retry the connection in the game; mission hooks are inactive", flush=True)
+        while alive(pid):
+            if mission_debugger.poll() is not None:
+                raise RuntimeError("TLS debugger exited; inspect data/logs/gdb_active_mission.log")
+            time.sleep(1)
+        return
     print(f"{time.strftime('%H:%M:%S')} {'Win32' if native else 'GDB'} mission debugger : posé", flush=True)
     if wait_for_mission_start(pid, mission_log_start, mission_debugger):
         if mission_debugger.poll() is None:
