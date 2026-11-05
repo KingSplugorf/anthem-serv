@@ -17,7 +17,7 @@ RUN=fixtures.RUN
 
 
 class RepeatingDebuggerTests(unittest.TestCase):
-    def exercise(self, exit_process=False):
+    def exercise(self, exit_process=False, story_leave=False):
         fixture=fixtures.MissionLifecycleTests('test_three_expeditions_restore_hub_and_use_new_startup_objects_and_points')
         fixture.setUp()
         # Its fixture producer is not the debugger under test; close and remove
@@ -67,7 +67,7 @@ class RepeatingDebuggerTests(unittest.TestCase):
                     memory.put(pointer,bytes(16))
                     memory.put(debugger.MissionHooks.starting_info.__globals__['STARTING_INFO_POINTER'],struct.pack('<Q',pointer))
                 if kind in ('startup','leave'):
-                    context.update(rcx=0x80000,rdx=value,dr6=2)
+                    context.update(rcx=0x80000,rdx=value,dr6=4 if kind=='leave' and story_leave else 2)
             return 1
         def get_context(handle,address):
             buffer=(C.c_ubyte*1232).from_address(address)
@@ -98,10 +98,10 @@ class RepeatingDebuggerTests(unittest.TestCase):
              patch.object(debugger.C,'get_last_error',return_value=121,create=True):
             debugger.run(123,stop,mission_session=RUN)
         self.assertIn(('starting',1,0xd0000055,0xd0000055,0x20000),snapshots)
-        self.assertIn(('active',1,5,5,0),snapshots)
+        self.assertIn(('active',1,21,21,0),snapshots)
         self.assertIn(('returning',1,1,1,0),snapshots)
         self.assertIn(('starting',2,0xd0000055,0xd0000055,0x21000),snapshots)
-        self.assertIn(('active',2,5,5,0),snapshots)
+        self.assertIn(('active',2,21,21,0),snapshots)
         self.assertEqual(contexts[20]['dr7'],1 if exit_process else 0)
         self.assertEqual(contexts[21]['dr7'],1 if exit_process else 0)
         self.assertEqual(instances[0].phase,'stopped')
@@ -113,6 +113,9 @@ class RepeatingDebuggerTests(unittest.TestCase):
 
     def test_two_launches_async_leave_and_graceful_detach_restore_every_thread(self):
         self.exercise()
+
+    def test_story_leave_callback_releases_workers_and_restores_hub_before_next_launch(self):
+        self.exercise(story_leave=True)
 
     def test_game_exit_revokes_workers_and_closes_without_reading_dead_game_memory(self):
         self.exercise(exit_process=True)

@@ -116,7 +116,7 @@
     },
     {
       "path": "tools/mission_lifecycle.py",
-      "sha256": "17f1b54b21f033469264528c0e3c2fb56edc90b665d856ebd35fa9d6addc1ac8"
+      "sha256": "02244eb85d0f3c5e9dae9955c678fb00bd774334f9a082eff29161a6527eb216"
     },
     {
       "path": "tools/mission_lease.py",
@@ -140,7 +140,7 @@
     },
     {
       "path": "tools/windows_debugger.py",
-      "sha256": "f1eaedc6b9c766b9ba4ffa4386a16e3980035305e4321bca2113ac16fb498c15"
+      "sha256": "e29f87c53e4f9a15285d5f9983b2a5b297b91e0d1345c00edff4cc75dec01607"
     },
     {
       "path": "tools/windows_ca_loader.py",
@@ -172,7 +172,7 @@
     },
     {
       "path": "tools/end_expedition.py",
-      "sha256": "164c397cf4876d86fcd047b39aedca877bcaff499141186a1ae55f3528e8c1a2"
+      "sha256": "543abcdf5ad375e6b72368fd9b9c44f09f4f9834f72b00c5f6ef27d51a4422c9"
     },
     {
       "path": "tools/combat_patches/ai/navigation.py",
@@ -189,6 +189,10 @@
     {
       "path": "tools/combat_patches/server_damage.py",
       "sha256": "c6eb938e3407dee9c72dbb7f6fbe019812df52ebdbf09b7df9c28636daf66c12"
+    },
+    {
+      "path": "tools/combat_patches/health/damage.py",
+      "sha256": "0d66ad24c91af444e67eea98c578731c0a855d215a353bee68eca3fb8284bd86"
     },
     {
       "path": "tools/windows/play-profile.ps1",
@@ -216,11 +220,11 @@
     },
     {
       "path": "tools/windows/build_lifecycle_manifest.py",
-      "sha256": "34766947046213111c1212c80e32b31fff061f014252bc0e3f5965752deaed48"
+      "sha256": "88e4275ddf68818f77eaff691d718d74e22999bdf4ec14b78ec9801bdb4f9d99"
     },
     {
       "path": "tools/windows/README.md",
-      "sha256": "1dfb759fe3c1b842cde3c427c134b845f5bceb4fa977d87101b6c7a22ddecb62"
+      "sha256": "c63863f2bc2c398cbea7a126f4d7ce22a230727528e293bc91a08eb90b91cb8b"
     }
   ]
 }

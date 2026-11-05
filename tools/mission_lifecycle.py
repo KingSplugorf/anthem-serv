@@ -12,6 +12,7 @@ import time
 
 from mission_hooks import MissionHooks, MISSION_DEBUGGER_READY
 from mission_lease import Lease
+from end_expedition import STORY_SUCCESS_CALLBACK, STORY_SUCCESS_CODE
 import hub_game
 
 LEAVE_SUCCESS = 0x1481F14D2
@@ -254,6 +255,8 @@ class RepeatingMissionHooks(MissionHooks):
                 raise OSError('GameStartingInfo not ready for this expedition')
             if self.memory.read(LEAVE_SUCCESS, len(LEAVE_CODE)) != LEAVE_CODE:
                 raise OSError('End Expedition callback does not match the supported build')
+            if self.memory.read(STORY_SUCCESS_CALLBACK, len(STORY_SUCCESS_CODE)) != STORY_SUCCESS_CODE:
+                raise OSError('Story expedition callback does not match the supported build')
             self.points = TransitionPoints(self.memory, self.data / f'quest_points_{self.pid}.json')
             point = self.points.apply(self.launched[1])
             self.use_root_level(registers['rcx'])
@@ -295,7 +298,7 @@ class RepeatingMissionHooks(MissionHooks):
 
     def leave(self, registers):
         if self.phase == 'active':
-            self.finish('returning', 'End Expedition accepted; hub default restored')
+            self.finish('returning', 'Expedition leave accepted; hub default restored')
 
     def close(self, process_exited=False):
         try:

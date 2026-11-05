@@ -19,7 +19,7 @@ from mission_hooks import MissionHooks, MISSION_CONNECT_STATE, STARTUP_STATE_ENT
 from process_memory import open_memory, read_at
 from tls_client_diagnostics import TlsFailureHooks, TLS_FAILURE_SITE
 from windows_memory import kernel, check, modules
-from mission_lifecycle import RepeatingMissionHooks, LEAVE_SUCCESS
+from mission_lifecycle import RepeatingMissionHooks, LEAVE_SUCCESS, STORY_SUCCESS_CALLBACK
 
 DWORD, QWORD, HANDLE = C.c_uint32, C.c_uint64, C.c_void_p
 CONTINUE, NOT_HANDLED = 0x00010002, 0x80010001
@@ -117,7 +117,7 @@ def replace_configuration(context, old_addresses, addresses, *, old_watchpoint, 
 
 def mission_breakpoints(hooks):
     if isinstance(hooks, RepeatingMissionHooks) and hooks.phase == 'active':
-        return (MISSION_CONNECT_STATE, LEAVE_SUCCESS), None
+        return (MISSION_CONNECT_STATE, LEAVE_SUCCESS, STORY_SUCCESS_CALLBACK), None
     # The dependent handlers do nothing until a mission has been selected.
     # In particular, an idle PlayMode write watch can stop every game thread
     # for writes that never need a Python callback in the hub.
@@ -341,6 +341,7 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None, mission_sessio
                                                          GATE_ENTRY: hooks.gate}
                                             if isinstance(hooks, RepeatingMissionHooks):
                                                 execution[LEAVE_SUCCESS] = hooks.leave
+                                                execution[STORY_SUCCESS_CALLBACK] = hooks.leave
                                             for index, address in enumerate(addresses):
                                                 if hits & (1 << index):
                                                     (hooks.playmode_write if index == watchpoint else execution[address])(registers)

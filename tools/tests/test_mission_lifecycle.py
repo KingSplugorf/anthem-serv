@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mission_hooks import STARTING_INFO_POINTER
 from mission_lifecycle import RepeatingMissionHooks, TransitionPoints, EventLog, LEAVE_SUCCESS, LEAVE_CODE, PLAYER_SLOTS
 from mission_lease import GuardedMemory, Lease, MissionInactive
+from end_expedition import STORY_SUCCESS_CALLBACK, STORY_SUCCESS_CODE
 import windows_debugger as debugger
 
 RUN = '1234567890abcdef1234567890abcdef'
@@ -52,6 +53,7 @@ class MissionLifecycleTests(unittest.TestCase):
         m.put(0x80018, bytes(16))
         m.put(0x80031, b'\0')
         m.put(LEAVE_SUCCESS, LEAVE_CODE)
+        m.put(STORY_SUCCESS_CALLBACK, STORY_SUCCESS_CODE)
         m.put(PLAYER_SLOTS, bytes(24))
         m.put(0x14096B9A0, bytes(5))
         m.put(0x90000, b'Enclave_HQ\0'.ljust(64, b'\0'))
@@ -100,7 +102,7 @@ class MissionLifecycleTests(unittest.TestCase):
             self.assertEqual(self.memory.read(0x40030,16),struct.pack('<QQ',point,point))
             self.assertIsNone(self.hooks.launched)
             self.assertTrue(self.hooks.lease.active(index))
-            self.assertEqual(debugger.mission_breakpoints(self.hooks),((debugger.MISSION_CONNECT_STATE,LEAVE_SUCCESS),None))
+            self.assertEqual(debugger.mission_breakpoints(self.hooks),((debugger.MISSION_CONNECT_STATE,LEAVE_SUCCESS,STORY_SUCCESS_CALLBACK),None))
             self.memory.put(PLAYER_SLOTS,struct.pack('<QQQ',0xB0000,0xB1000,0xB2000))
             self.hooks.leave(self.registers)
             self.assertEqual(self.hooks.phase,'returning')
@@ -191,7 +193,7 @@ class MissionLifecycleTests(unittest.TestCase):
         self.memory.put(STARTING_INFO_POINTER,struct.pack('<Q',0x20000))
         self.launch()
         self.memory.put(STARTING_INFO_POINTER,bytes(8))
-        self.assertEqual(debugger.mission_breakpoints(self.hooks),((debugger.MISSION_CONNECT_STATE,LEAVE_SUCCESS),None))
+        self.assertEqual(debugger.mission_breakpoints(self.hooks),((debugger.MISSION_CONNECT_STATE,LEAVE_SUCCESS,STORY_SUCCESS_CALLBACK),None))
 
     def test_event_reader_ignores_old_log_handles_partial_lines_and_log_replacement(self):
         reader=EventLog(self.blaze)

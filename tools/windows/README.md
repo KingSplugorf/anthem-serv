@@ -480,6 +480,19 @@ py -3 .\tools\windows\inspect_expedition.py --pid <running-game-pid>
 It performs no remote calls, debugger attachment, memory writes or save changes.
 The raw slots/windows do not establish function boundaries or implement an exit.
 
+The supported story executor's leave method now redirects its empty-participant
+branch to its own existing Success callback. Its complete method signature is
+validated first, and nonempty participant checks remain unchanged. The native
+debugger watches this callback alongside freeplay's callback so it revokes combat
+writes and restores the hub launch point before the game continues its transfer.
+The branch and callback behavior are tested using the exact exported x64 method;
+the complete return-to-hub and main-menu flows still require in-game verification.
+
+The initial non-weapon impact bonus is now neutral (1), replacing the development
+default of 3. Explicitly configured nonzero bonuses are preserved. This removes
+an automatic boost; it does not restore accurate ability damage formulas. Frost
+Shards balance, Wind Wall creation and beacon interaction remain under investigation.
+
 Native solo mode now keeps one mission debugger attached for the game session.
 Blaze assigns a fresh game/scenario ID to each expedition, retains the hub party,
 and ignores late exit messages for older expeditions. Exact retransmissions of a
