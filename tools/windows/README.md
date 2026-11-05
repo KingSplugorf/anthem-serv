@@ -79,6 +79,19 @@ It contains no full executable or game assets. Packed executable code may have
 no meaningful bytes until runtime, so matching this report alone does not
 establish runtime compatibility.
 
+When investigating the game-specific certificate loader, a second read-only tool
+can use the existing report to export bounded TLS-related code references:
+
+```powershell
+py -3 tools/windows/inspect_tls_refs.py 'C:\Games\Anthem\Anthem.exe' --layout Anthem-tls-layout.json --output Anthem-tls-code.json
+```
+
+It verifies the executable's SHA-256 against the report, checks the selected
+string bytes, and includes small code excerpts at candidate references and paired
+boolean wrappers. It does not execute code, attach to the game, or change trust.
+Candidate addresses are not verified API identities and must not be called or
+patched based on this report alone. Share `Anthem-tls-code.json` for analysis.
+
 ## Patching and debugger changes
 
 - `tools/process_memory.py` selects Linux `/proc` access or native Win32 access.
