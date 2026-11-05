@@ -1,6 +1,7 @@
 """Experimental x64 Windows replacement for gdb_active_mission.gdb.
 
-Uses the same three execution breakpoints and one four-byte write watchpoint.
+Uses a connection breakpoint while idle; mission selection arms the dependent
+execution breakpoints and four-byte write watchpoint until mission startup.
 Requires 64-bit CPython and the repository's exact game build at image base
 0x140000000. Reads 'stop' from stdin to clear breakpoints and detach gracefully.
 """
@@ -98,6 +99,33 @@ def configure(context, addresses, *, watchpoint=3):
     context.set("dr7", control)
 
 
+def replace_configuration(context, old_addresses, addresses, *, old_watchpoint, watchpoint):
+    """Replace only a configuration that this debugger still owns."""
+    expected, replacement = Context(), Context()
+    configure(expected, old_addresses, watchpoint=old_watchpoint)
+    configure(replacement, addresses, watchpoint=watchpoint)
+    names = ('dr0', 'dr1', 'dr2', 'dr3')
+    # Ignore reserved/debug-control bits, including the CPU's fixed DR7 bit 10.
+    mask = 0xffff00ff
+    if (context.get('dr7') & mask != expected.get('dr7') & mask or
+            any(context.get(name) != expected.get(name) for name in names)):
+        raise OSError('Thread debug registers changed outside this debugger; refusing to replace them')
+    for name in (*names, 'dr6', 'dr7'):
+        context.set(name, replacement.get(name))
+
+
+def mission_breakpoints(hooks):
+    # The dependent handlers do nothing until a mission has been selected.
+    # In particular, an idle PlayMode write watch can stop every game thread
+    # for writes that never need a Python callback in the hub.
+    if hooks.launched is None:
+        return (MISSION_CONNECT_STATE,), None
+    pointer, _ = hooks.starting_info()
+    if pointer % 4:
+        raise OSError('GameStartingInfo watchpoint is not aligned')
+    return (MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY, pointer), 3
+
+
 class AddressSpace:
     def __init__(self, memory):
         self.memory = memory
@@ -166,11 +194,10 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
             addresses, callbacks = (TLS_FAILURE_SITE,), (hooks.failure,)
         else:
             hooks = MissionHooks(AddressSpace(memory), pid)
-            pointer, _ = hooks.starting_info()
-            if pointer % 4:
-                raise OSError("GameStartingInfo watchpoint is not aligned")
-            addresses = (MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY, pointer)
+            addresses, watchpoint = mission_breakpoints(hooks)
             callbacks = (hooks.connect, hooks.startup, hooks.gate, hooks.playmode_write)
+        if special_mode:
+            watchpoint = None
         try:
             check(k.DebugActiveProcess(pid))
             attached = True
@@ -204,7 +231,7 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
                         context = Context()
                         check(k.GetThreadContext(handle, context.address))
                         originals[event.tid] = {name: context.get(name) for name in ("dr0", "dr1", "dr2", "dr3", "dr6", "dr7")}
-                        configure(context, addresses, watchpoint=None if special_mode else 3)
+                        configure(context, addresses, watchpoint=watchpoint)
                         check(k.SetThreadContext(handle, context.address))
                     elif event.code == 4:  # EXIT_THREAD
                         handle = threads.pop(event.tid, None)
@@ -238,6 +265,24 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
                                     else:
                                         for index, callback in enumerate(callbacks):
                                             if hits & (1 << index): callback(registers)
+                                    if not special_mode:
+                                        desired, desired_watchpoint = mission_breakpoints(hooks)
+                                        if desired != addresses or desired_watchpoint != watchpoint:
+                                            # A debug event suspends the process. Update every live
+                                            # thread before resuming the mission transition.
+                                            for tid, handle in threads.items():
+                                                status = DWORD()
+                                                check(k.GetExitCodeThread(handle, C.byref(status)))
+                                                if status.value != 259: continue
+                                                other = context if tid == event.tid else Context()
+                                                if other is not context:
+                                                    check(k.GetThreadContext(handle, other.address))
+                                                replace_configuration(other, addresses, desired,
+                                                                      old_watchpoint=watchpoint,
+                                                                      watchpoint=desired_watchpoint)
+                                                if other is not context:
+                                                    check(k.SetThreadContext(handle, other.address))
+                                            addresses, watchpoint = desired, desired_watchpoint
                                 finally:
                                     context.resume()
                                     check(k.SetThreadContext(threads[event.tid], context.address))

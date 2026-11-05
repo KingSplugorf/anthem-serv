@@ -222,6 +222,35 @@ class MissionTests(unittest.TestCase):
 
 
 class DebuggerTests(unittest.TestCase):
+    def test_idle_hub_arms_only_connection_then_mission_arms_dependent_hooks(self):
+        hooks=SimpleNamespace(launched=None,starting_info=Mock(return_value=(0x20000,(0,0,0,0))))
+        idle,watchpoint=debugger.mission_breakpoints(hooks)
+        self.assertEqual(idle,(debugger.MISSION_CONNECT_STATE,))
+        self.assertIsNone(watchpoint)
+        hooks.starting_info.assert_not_called()
+        context=debugger.Context()
+        debugger.configure(context,idle,watchpoint=watchpoint)
+        self.assertEqual(context.get('dr7'),1)
+        context.set('dr7',context.get('dr7')|0x400)  # CPU's fixed DR7 bit is not an ownership change.
+        hooks.launched=(1,42,2,7)
+        active,active_watchpoint=debugger.mission_breakpoints(hooks)
+        debugger.replace_configuration(context,idle,active,old_watchpoint=watchpoint,watchpoint=active_watchpoint)
+        self.assertEqual(context.get('dr7'),0xd0000055)
+        self.assertEqual(context.get('dr3'),0x20000)
+        hooks.launched=None
+        debugger.replace_configuration(context,active,idle,old_watchpoint=active_watchpoint,watchpoint=watchpoint)
+        self.assertEqual(context.get('dr7'),1)
+        self.assertEqual(context.get('dr3'),0)
+
+    def test_reconfiguration_refuses_foreign_breakpoints_without_changing_context(self):
+        context=debugger.Context()
+        debugger.configure(context,(0x10000,),watchpoint=None)
+        context.set('dr1',0x60000)
+        before=bytes(context.buffer)
+        with self.assertRaisesRegex(OSError,'changed outside'):
+            debugger.replace_configuration(context,(0x10000,),(0x10000,0x20000),old_watchpoint=None,watchpoint=None)
+        self.assertEqual(bytes(context.buffer),before)
+
     def test_win64_event_and_context_abi(self):
         self.assertEqual(C.sizeof(debugger.ExceptionRecord),152)
         self.assertEqual(C.sizeof(debugger.Event),176)
@@ -248,7 +277,7 @@ class DebuggerTests(unittest.TestCase):
 
 
 class DebuggerLifecycleTests(unittest.TestCase):
-    def exercise(self, fail_callback=False, tls_diagnostics=False, ca_registration=False):
+    def exercise(self, fail_callback=False, tls_diagnostics=False, ca_registration=False, activate_mission=False):
         stop = threading.Event()
         k = Mock()
         hooks = Mock()
@@ -256,9 +285,14 @@ class DebuggerLifecycleTests(unittest.TestCase):
         hooks.addresses=(0x147d8fe90,0x90080)
         hooks.completed=False
         hooks.report={}
+        hooks.launched=None
+        if activate_mission:
+            def connect(registers): hooks.launched=(1,42,2,7)
+            hooks.connect.side_effect=connect
         if fail_callback:
             (hooks.handle if ca_registration else hooks.failure if tls_diagnostics else hooks.connect).side_effect = OSError('hook read failed')
         contexts = {}
+        configurations=[]
         dispositions = []
         events = [(3,None), (1,debugger.BREAKPOINT), (1,0xc0000005), (1,debugger.SINGLE_STEP)]
         def wait(event_pointer, timeout):
@@ -281,6 +315,7 @@ class DebuggerLifecycleTests(unittest.TestCase):
         def set_context(handle,address):
             buffer = (C.c_ubyte*1232).from_address(address)
             contexts.update((name,struct.unpack_from('<Q',buffer,offset)[0]) for name,offset in debugger.Context.OFFSETS.items())
+            configurations.append(contexts['dr7'])
             return 1
         def continue_event(pid,tid,disposition):
             dispositions.append(disposition)
@@ -329,6 +364,9 @@ class DebuggerLifecycleTests(unittest.TestCase):
             hooks.validate.assert_called_once_with('Anthem.exe')
         else:
             hooks.connect.assert_called_once()
+            self.assertEqual(configurations[0],1)
+            if activate_mission: self.assertIn(0xd0000055,configurations)
+            else: self.assertNotIn(0xd0000055,configurations)
         k.DebugSetProcessKillOnExit.assert_called_once_with(False)
         k.DebugActiveProcessStop.assert_called_once_with(123)
         k.ResumeThread.assert_called_once_with(20)
@@ -355,6 +393,71 @@ class DebuggerLifecycleTests(unittest.TestCase):
 
     def test_ca_callback_failure_still_restores_registers_and_detaches(self):
         self.exercise(fail_callback=True,ca_registration=True)
+
+    def test_selected_mission_enables_dependent_breakpoints_before_resuming(self):
+        self.exercise(activate_mission=True)
+
+    def test_mission_reconfiguration_updates_other_live_threads_and_skips_exited_thread(self):
+        stop=threading.Event()
+        k=Mock(); hooks=Mock()
+        hooks.launched=None
+        hooks.starting_info.return_value=(0x20000,(0,0,0,0))
+        def connect(registers): hooks.launched=(1,42,2,7)
+        hooks.connect.side_effect=connect
+        contexts={20:{},21:{},25:{}}
+        controls={handle:[] for handle in contexts}
+        events=[(3,456,10),(2,457,11),(2,458,15),
+                (1,456,debugger.BREAKPOINT),(1,456,debugger.SINGLE_STEP)]
+        def wait(pointer,timeout):
+            event=pointer._obj
+            event.code,event.tid,value=events.pop(0)
+            event.pid=123
+            if event.code==3: event.info.process.thread=value
+            elif event.code==2: event.info.thread.thread=value
+            else:
+                event.info.exception.record.code=value
+                if value==debugger.SINGLE_STEP: contexts[20]['dr6']=1
+            return 1
+        def get_context(handle,address):
+            buffer=(C.c_ubyte*1232).from_address(address)
+            for name,offset in debugger.Context.OFFSETS.items():
+                struct.pack_into('<Q',buffer,offset,contexts[handle].get(name,0))
+            return 1
+        def set_context(handle,address):
+            buffer=(C.c_ubyte*1232).from_address(address)
+            contexts[handle].update((name,struct.unpack_from('<Q',buffer,offset)[0])
+                                    for name,offset in debugger.Context.OFFSETS.items())
+            controls[handle].append(contexts[handle]['dr7'])
+            return 1
+        def continue_event(pid,tid,disposition):
+            if not events:
+                self.assertEqual(controls[20][-1],0xd0000055)
+                self.assertEqual(controls[21][-1],0xd0000055)
+                self.assertEqual(controls[25],[1])
+                stop.set()
+            return 1
+        def duplicate(owner,original,target,output,access,inherit,flags):
+            output._obj.value=original+10
+            return 1
+        def exit_code(handle,status):
+            status._obj.value=0 if handle==25 else 259
+            return 1
+        k.WaitForDebugEvent.side_effect=wait
+        k.GetThreadContext.side_effect=get_context
+        k.SetThreadContext.side_effect=set_context
+        k.ContinueDebugEvent.side_effect=continue_event
+        k.DuplicateHandle.side_effect=duplicate
+        k.GetExitCodeThread.side_effect=exit_code
+        k.SuspendThread.return_value=0; k.ResumeThread.return_value=1
+        with patch.object(debugger,'os',SimpleNamespace(name='nt')), \
+             patch.object(debugger,'modules',return_value=iter([(0x140000000,'Anthem.exe')])), \
+             patch.object(debugger,'open_memory',return_value=io.BytesIO()), \
+             patch.object(debugger,'MissionHooks',return_value=hooks), \
+             patch.object(debugger,'debug_api',return_value=k):
+            debugger.run(123,stop)
+        self.assertEqual(contexts[20]['dr7'],0)
+        self.assertEqual(contexts[21]['dr7'],0)
+        self.assertEqual(k.SuspendThread.call_count,2)
 
 
 class CombatSelectionTests(unittest.TestCase):

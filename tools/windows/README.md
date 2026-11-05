@@ -4,9 +4,11 @@ This is the first native Windows port of the **local, single-game** workflow.
 It does not use WSL, Wine, Proton, Bash, or GDB on Windows. It is developer
 setup, not a packaged end-user installer. On-device reports have confirmed native
 Windows CA registration and the game's TLS/HTTP request to the redirector for
-the inspected build. End-to-end login and gameplay still need validation. The
-automated tests run on Linux with simulated Win32 APIs and real Linux service
-requests.
+the inspected build. After the Blaze hostname correction, the user reported
+reaching Fort Tarsis and moving around the hub, with short menu-related pauses.
+Mission launch/combat and broader Windows compatibility still need validation.
+The automated tests run on Linux with simulated Win32 APIs and real Linux
+service requests.
 
 ## Prerequisites
 
@@ -208,8 +210,8 @@ An on-device report for this build recorded `native_result: 1`, `loaded: true`,
 `anthem-1-pc` redirector request. Blaze on 10041 still received the client's
 `CertificateUnknown` alert while it was advertised by IP. The inspected receive
 certificate code sends alert 46 from its hostname-match failure path, consistent
-with the launcher/certificate name mismatch corrected above. Validation against
-the game after that hostname change remains pending.
+with the launcher/certificate name mismatch corrected above. The user then
+reported successful entry into the Fort Tarsis hub after that hostname change.
 
 The report is `data/local_ca_PID.json`; the log is
 `data/logs/windows_ca_loader.log`. Reports include the public certificate's DER
@@ -223,8 +225,8 @@ The generated call stub has a native Linux x64 regression using synthetic
 Microsoft-ABI functions that clobber volatile registers/SSE state. The broader
 suite checks rejection, scoping, allocation protection, readiness correlation,
 and debugger cleanup with simulated Win32 APIs. The runtime report confirms
-successful registration on one Windows setup; full login/gameplay and broader
-Windows compatibility are still unverified. Leave the opt-in flag unset to retain
+successful registration and user-reported hub entry on one Windows setup;
+mission gameplay and broader Windows compatibility are still unverified. Leave the opt-in flag unset to retain
 the normal launch workflow.
 
 ## Patching and debugger changes
@@ -240,11 +242,21 @@ the normal launch workflow.
   are mapped to the current scripts, and unknown names produce an error.
 - `tools/mission_hooks.py` holds the mission behavior used by both the Linux
   GDB adapter and `tools/windows_debugger.py`. Windows uses the native debugging
-  API with three hardware execution breakpoints and one four-byte write
-  watchpoint, applied to existing and newly created threads. The supervisor
+  API with one connection breakpoint while idle in the hub. Once a mission is
+  selected, the adapter arms the two dependent execution breakpoints and the
+  four-byte PlayMode write watchpoint on live threads before resuming. Joining
+  or returning to an idle state removes those dependent breakpoints. Newly
+  created threads receive the current configuration. The adapter refuses to
+  replace debug registers that differ from its own configuration. The supervisor
   requests a graceful detach through stdin after mission startup. The adapter
   restores original debug registers, continues threads, and passes unrelated
   exceptions back to the game. If the parent exits, EOF requests detachment.
+- `tools/default_point.py` makes two streaming passes over bounded memory chunks
+  when locating quest launch points. It retains addresses instead of copying
+  the entire writable game heap into Python memory. This trades an extra remote
+  read pass for substantially lower peak memory use during startup. Reducing
+  idle debugger events and scan memory use does not by itself establish the
+  cause of menu pauses; Windows performance still needs a comparison run.
 - All patch addresses and injected assembly remain specific to the original
   game build. Relocated main images are rejected (expected base `0x140000000`);
   automatic ASLR rebasing is **not implemented**. Runtime build compatibility
@@ -260,12 +272,34 @@ a packaged Windows installer, and first-launch key automation are not ported.
 Windows starts the configured executable directly; installations that spawn a
 different game process will need process discovery before patches can attach.
 
-The critical next check is on an actual Windows machine with the supported game:
-verify the local services, confirm module addresses/patch-byte checks, attach and
-detach the native debugger, start a mission, and test mission/combat behavior and
-cleanup. An attach failure due to Windows access permissions should be diagnosed
+The next checks on an actual Windows machine with the supported game are menu
+responsiveness, starting a mission, mission/combat behavior, and cleanup. An
+attach failure due to Windows access permissions should be diagnosed
 with the game's integrity level and launcher logs; setup does not enable debug
 privileges or run the entire launcher as administrator automatically.
+
+The bundled `data/saves/state.json` is a development preset with
+`niveau_pilote: 30` and one pilot named `Joueur 1`. Windows copies that template
+into its per-user runtime save only on first use. An empty state instead defaults
+to level 1; changing the repository template does not change an existing runtime
+save. To inspect what BIGS currently serves, use a separate PowerShell window
+while the game/launcher are running:
+
+```powershell
+curl.exe --connect-timeout 3 --max-time 8 -i http://127.0.0.1:8080/api/character/1000/characters
+```
+
+The character response includes `name`, `lancerName`, and `level`. If the in-game
+name is blank, compare those fields before changing saved progress. The terminal
+running `npm start` remains occupied until the launcher closes, so diagnostic
+commands typed into that terminal may not execute.
+The normal service initializes its runtime character name from `JOUEUR_NOM`
+(default `Joueur`); the template's stored pilot name is used when loading stored
+pilots in new-game mode. One live response confirmed `name`/`lancerName` as
+`Joueur` and level 30 despite a user-reported unnamed UI label, so that label's
+source still needs identifying.
+The character-list route has no trailing slash. An unknown route currently
+returns HTTP 200 with `{}`, which is not a character-list response.
 
 For a connection error before login, inspect `data/logs/redirector.log`. The
 redirector records the ClientHello's server name, cipher suites and signature

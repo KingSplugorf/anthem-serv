@@ -63,20 +63,27 @@ def text_at(memory, pointer):
 
 def locate(pid, memory, wanted):
     regions = {}
-    for state in transition_states(json.load(open(DESCRIPTION))):
+    with open(DESCRIPTION, encoding='utf-8') as source:
+        description = json.load(source)
+    for state in transition_states(description):
         if state["StartPointName"] in wanted:
             regions.setdefault(state["RegionHash"], set()).add(state["StartPointName"])
-    chunks = []
-    for start, end in writable_regions(pid):
-        try:
-            memory.seek(start)
-            chunks.append((start, memory.read(end - start)))
-        except OSError:
-            continue
+    ranges = list(writable_regions(pid))
+
+    def chunks():
+        # Keep addresses, not a snapshot of the whole writable game heap.
+        # The second pass re-reads each bounded chunk so startup does not retain
+        # several gigabytes alongside the running game.
+        for start, end in ranges:
+            try:
+                memory.seek(start)
+                yield start, memory.read(end - start)
+            except OSError:
+                continue
     point_strings, default_strings = {}, []
     needle = CURRENT_DEFAULT.encode() + b"\0"
     hashes = numpy.array(sorted(regions), dtype=numpy.uint32)
-    for start, chunk in chunks:
+    for start, chunk in chunks():
         position = chunk.find(needle)
         while position >= 0:
             default_strings.append(start + position)
@@ -91,7 +98,9 @@ def locate(pid, memory, wanted):
                     point_strings[name] = pointer
     targets = numpy.array(sorted(default_strings), dtype=numpy.uint64)
     components = []
-    for start, chunk in chunks:
+    if not default_strings:
+        return components, point_strings
+    for start, chunk in chunks():
         qwords = numpy.frombuffer(chunk[: len(chunk) // 8 * 8], dtype="<u8")
         for index in numpy.nonzero(numpy.isin(qwords, targets))[0]:
             component = int(index) * 8 - DEFAULT_POINT
