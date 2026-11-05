@@ -360,6 +360,40 @@ processes exit. Close existing launcher windows before updating; an older runnin
 copy does not participate in the new single-instance guard. To change a profile,
 close the existing launcher first, then use the fresh-profile command.
 
+### Mission/freeplay selected but nothing launches
+
+The local path is: game sends Blaze `CreateGameTemplate` (0x000a) or
+`StartMatchmakingScenario` (0x0010), Blaze logs `TMPA`/`SCNA`, the join redirect
+starts the internal server, and the mission debugger applies `GameStartingInfo`
+and the quest's root-level launch point. Freeplay uses this same path; its catalog
+quest ID is `1401555469`. Choosing a quest and setting `Ready=true` are earlier
+steps and do not establish that a launch request was sent.
+
+With the launcher/game still running, attempt the launch, then in a second
+PowerShell window run from the repository root:
+
+```powershell
+$gameProcess = @(Get-Process -Name Anthem -ErrorAction Stop)
+if ($gameProcess.Count -ne 1) { throw 'Expected one Anthem process; close other game instances first.' }
+py -3 .\tools\windows\inspect_mission.py --pid $gameProcess[0].Id
+```
+
+Share the generated `mission-diagnostics-*.json`. The read-only report collects
+bounded log excerpts, recent GameManager commands, launch parameters, the current
+pilot, selected quest start-point coverage and saved freeplay eligibility fields.
+It does not attach to the game or change its memory/save. Its stage labels
+describe observed log entries, not a confirmed cause. The command must run in a
+second terminal because the launcher occupies the first.
+
+The launch parser now accepts string and integer generic attributes, matching
+Blaze's accepted forms, and leaves the current level unchanged when launch data
+is incomplete. This fixes a parser mismatch; it does not establish that the
+mismatch caused a particular player's failed attempt. Native mission/combat
+behavior still needs on-device testing. The current patch lifecycle prepares
+one mission launch per game process; restart the game before another mission
+test. Fresh-profile campaign unlock progression is not yet implemented, and
+the diagnostics report its saved freeplay state without modifying it.
+
 For a connection error before login, inspect `data/logs/redirector.log`. The
 redirector records the ClientHello's server name, cipher suites and signature
 schemes, then the negotiated TLS version/cipher on success. Failures explicitly

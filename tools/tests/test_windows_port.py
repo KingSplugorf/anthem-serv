@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import process_memory
 import windows_memory as win
 import windows_debugger as debugger
-from mission_hooks import MissionHooks, STARTING_INFO_POINTER
+from mission_hooks import MissionHooks, STARTING_INFO_POINTER, parse_attributes
 
 
 class FakeKernel:
@@ -211,6 +211,31 @@ class MissionTests(unittest.TestCase):
         self.hooks.connect(self.registers)
         self.assertIsNone(self.hooks.launched)
         self.assertEqual(self.memory.read(0x20000,16),b'\0'*16)
+        self.assertEqual(self.memory.writes, [])
+
+    def test_generic_integer_freeplay_parameters_reach_starting_info(self):
+        values = (2, 1401555469, 1, 0)
+        line = 'SCNA = {' + ', '.join(f'"{name}": générique({value})' for name, value in zip(('playMode','questId','desiredDifficulty','startPoint'), values)) + '}\n'
+        (self.data/'logs/blaze.log').write_text(line, encoding='utf-8')
+        self.hooks.connect(self.registers)
+        self.assertEqual(self.hooks.starting_info()[1], values)
+
+    def test_parser_accepts_string_integer_and_mixed_blaze_attribute_maps(self):
+        for encoded in ('générique("{n}")', 'générique({n})', '"{n}"'):
+            line = 'TMPA = {' + ', '.join('"'+name+'": '+encoded.format(n=n) for name,n in zip(('playMode','questId','desiredDifficulty','startPoint'), (1,42,2,7))) + '}'
+            self.assertEqual(parse_attributes(line), (1,42,2,7))
+        self.assertEqual(parse_attributes('SCNA = {"playMode": générique(1), "questId": générique("42"), "desiredDifficulty": "2", "startPoint": 7}'), (1,42,2,7))
+
+    def test_invalid_latest_request_does_not_fall_back_to_previous_launch(self):
+        path = self.data/'logs/blaze.log'
+        with path.open('a', encoding='utf-8') as output:
+            output.write('SCNA = {"questId": générique(99)}\n')
+        self.assertIsNone(self.hooks.last_attributes())
+
+    def test_parser_rejects_invalid_or_out_of_range_launch_values(self):
+        valid = 'SCNA = {"playMode": générique(1), "questId": générique(42), "desiredDifficulty": générique(2), "startPoint": générique(7)}'
+        for replacement in ('générique(-1)', 'générique(1.5)', 'générique(4294967296)', 'générique("invalid")'):
+            self.assertIsNone(parse_attributes(valid.replace('générique(42)', replacement)))
 
     def test_watchpoint_and_gate_restore_mission(self):
         self.hooks.launched = (1,42,2,7)
