@@ -41,7 +41,36 @@ async fn answer(
     socket: tokio::net::TcpStream,
     response_body: Arc<String>,
 ) -> std::io::Result<()> {
-    let mut stream = acceptor.accept(socket).await?;
+    let peer = socket.peer_addr()?;
+    let incoming = tls::LazyConfigAcceptor::new(tls::ClientHelloAcceptor::default(), socket)
+        .await
+        .map_err(|error| {
+            std::io::Error::new(error.kind(), format!("TLS before ClientHello: {error}"))
+        })?;
+    {
+        let hello = incoming.client_hello();
+        println!(
+            "TLS ClientHello {peer}: SNI={:?}, cipher suites={:?}, signature schemes={:?}",
+            hello.server_name(),
+            hello.cipher_suites(),
+            hello.signature_schemes()
+        );
+    }
+    let mut stream = incoming
+        .into_stream(acceptor.config().clone())
+        .await
+        .map_err(|error| {
+            std::io::Error::new(error.kind(), format!("TLS after ClientHello: {error}"))
+        })?;
+    println!(
+        "TLS established {peer}: version={:?}, cipher suite={:?}",
+        stream.get_ref().1.protocol_version(),
+        stream
+            .get_ref()
+            .1
+            .negotiated_cipher_suite()
+            .map(|suite| suite.suite())
+    );
     let request = http::read_request(&mut stream).await?;
     if request.method != "POST" || request.path != "/redirector/getServerInstance" {
         println!("requête inconnue : {} {}", request.method, request.path);

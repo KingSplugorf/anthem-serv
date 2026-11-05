@@ -114,6 +114,16 @@ cleanup. An attach failure due to Windows access permissions should be diagnosed
 with the game's integrity level and launcher logs; setup does not enable debug
 privileges or run the entire launcher as administrator automatically.
 
+For a connection error before login, inspect `data/logs/redirector.log`. The
+redirector records the ClientHello's server name, cipher suites and signature
+schemes, then the negotiated TLS version/cipher on success. Failures explicitly
+identify whether they occurred before or after ClientHello. These are TLS
+metadata, not login credentials or request bodies. Successful launcher probes
+do not establish that the game supports the same TLS settings or accepts the
+development certificate. An offline-launch configuration alone does not confirm
+certificate compatibility. TLS verification and the server's supported protocol
+versions are unchanged by these diagnostics.
+
 Automated development checks from the repository root:
 
 ```powershell

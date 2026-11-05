@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
-pub use tokio_rustls::TlsAcceptor;
+pub use rustls::server::Acceptor as ClientHelloAcceptor;
+pub use tokio_rustls::{LazyConfigAcceptor, TlsAcceptor};
 
 pub fn acceptor_from_pem(certificate_path: &str, private_key_path: &str) -> TlsAcceptor {
     let certificates = CertificateDer::pem_file_iter(certificate_path)
