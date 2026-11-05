@@ -5,7 +5,7 @@ const vm = require("node:vm");
 const fs = require("node:fs");
 const path = require("node:path");
 
-async function launcherHarness({ deferReadiness = false, taskkillThrows = false, env = {}, singleInstance = true } = {}) {
+async function launcherHarness({ deferReadiness = false, taskkillThrows = false, taskkillExitCode = 0, env = {}, singleInstance = true } = {}) {
   const ipc = new Map();
   const app = new EventEmitter();
   app.whenReady = () => Promise.resolve();
@@ -44,7 +44,7 @@ async function launcherHarness({ deferReadiness = false, taskkillThrows = false,
     if (taskkillThrows) throw new Error("simulated taskkill failure");
     const child = children.get(Number(args[1]));
     killed.push(child.pid);
-    queueMicrotask(() => { child.exitCode = 0; child.emit("exit", 0); callback(null); });
+    queueMicrotask(() => { child.exitCode = taskkillExitCode; child.emit("exit", taskkillExitCode); callback(null); });
   }
   class BrowserWindow extends EventEmitter {
     constructor() {
@@ -182,6 +182,25 @@ test("explicit mission-server identity overrides retain the Linux startup semant
     assert.equal(harness.spawned.find((item) => item.command === "blaze.exe").options.env.BLAZE_SERVEUR_MISSION_ID, value);
     await harness.ipc.get("arreter")();
   }
+});
+
+test("intentional shutdown does not report a terminated patch process as a new patching failure", async () => {
+  const harness = await launcherHarness({ taskkillExitCode: 1 });
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  await harness.ipc.get("arreter")();
+  assert.equal(new Set(harness.killed).size, 5);
+  assert.equal(harness.logs.some((line) => line.includes("Patching failed")), false);
+});
+
+test("an unexpected patch failure during a running game is reported and stops its session", async () => {
+  const harness = await launcherHarness();
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  const patcher = harness.spawned.find((item) => item.args.some((arg) => arg.endsWith("auto_patches.py"))).child;
+  patcher.exitCode = 1;
+  patcher.emit("exit", 1);
+  await new Promise(setImmediate);
+  assert.equal(harness.logs.filter((line) => line.includes("Patching failed (1)")).length, 1);
+  assert.equal(new Set(harness.killed).size, 4);
 });
 
 test("legacy mission switch disables lifecycle on the services and preserves explicit peer configuration", async () => {

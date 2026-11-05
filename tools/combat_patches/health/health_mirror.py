@@ -23,9 +23,9 @@ SCAN_THREADS = 4
 
 
 class Process:
-    def __init__(self, pid: int) -> None:
+    def __init__(self, pid: int, writable: bool = True) -> None:
         self.pid = pid
-        self.memory = open_memory(pid, "r+b")
+        self.memory = open_memory(pid, "r+b" if writable else "rb")
 
     def read(self, address: int, size: int) -> bytes:
         if not 0x10000 <= address < 1 << 47:

@@ -6,7 +6,11 @@ setup, not a packaged end-user installer. On-device reports have confirmed nativ
 Windows CA registration and the game's TLS/HTTP request to the redirector for
 the inspected build. After the Blaze hostname correction, the user reported
 reaching Fort Tarsis and moving around the hub, with short menu-related pauses.
-Mission launch/combat and broader Windows compatibility still need validation.
+On-device reports have also confirmed mission entry, damage application and
+story-mission End Expedition returning to the hub. Part-specific damage,
+creature attacks, beacon interactions, Wind Wall and repeated freeplay loading
+remain under investigation; internal startup state 8 alone does not confirm a
+completed client load.
 The automated tests run on Linux with simulated Win32 APIs and real Linux
 service requests.
 
@@ -486,12 +490,64 @@ validated first, and nonempty participant checks remain unchanged. The native
 debugger watches this callback alongside freeplay's callback so it revokes combat
 writes and restores the hub launch point before the game continues its transfer.
 The branch and callback behavior are tested using the exact exported x64 method;
-the complete return-to-hub and main-menu flows still require in-game verification.
+story-mission return to the hub was subsequently confirmed on-device. Main-menu
+transfers and repeated client loading still need validation.
 
 The initial non-weapon impact bonus is now neutral (1), replacing the development
 default of 3. Explicitly configured nonzero bonuses are preserved. This removes
 an automatic boost; it does not restore accurate ability damage formulas. Frost
-Shards balance, Wind Wall creation and beacon interaction remain under investigation.
+Shards balance and Wind Wall creation remain under investigation. Scars and
+Brutes attack on-device, while wildlife move and react to damage but still fail
+to attack or deal damage reliably; health-bar color alone does not isolate the
+problem. Health pickups have also been reported not to
+restore pilot health. The health follower copies enemy shields and destructibles,
+not the pilot's health; pickup handling and replication still need tracing.
+
+Repeat AI setup now recognizes the verified perception code already installed
+by the preceding expedition. It preserves that code and the current player
+pointer rather than repeatedly rejecting the entries and clearing the pointer.
+An unexpected table entry or modified perception code still stops installation
+before any write.
+
+Client-player lookup now filters vtable hits by the owning character and component
+membership before requiring a unique result. Multiple valid copies remain
+ambiguous. If the copy is missing after startup, the position follower retries
+discovery through a separate read-only handle, at most one background scan per
+60 seconds; it validates the current local player again before updating cached
+copy pointers. On native Windows, unavailable client copies leave the native
+server coordinates untouched rather than overwriting them with the approximate
+aim origin. The legacy Linux fallback is retained. Stopping only the position
+follower restored beacon interaction in an on-device control test while damage
+hooks stayed installed. The permanent native-position correction still needs
+an in-game comparison. Stopping the follower did not restore wildlife attacks.
+
+To investigate client-zero/server-health-loss hits or missing attacks, run this
+read-only snapshot in a mission near the affected enemy:
+
+```powershell
+py -3 .\tools\windows\inspect_combat.py --pid <running-game-pid>
+```
+
+The `combat-internals-*.json` includes player position comparison, AI perception
+records, health/hostility components, gear behavior slots and bounded native
+damage/attack/health code windows. To record a health pickup, start while injured,
+then switch back to the game and collect one during this 20-second recording:
+
+```powershell
+py -3 .\tools\windows\inspect_combat.py --pid <running-game-pid> --watch-seconds 20
+```
+
+Health samples contain verified server health fields and raw client-component
+bytes; unverified client offsets are not presented as health values. Each sample
+revalidates component ownership. Recordings are limited to 30 seconds and share
+the snapshot's total read budget.
+The inspector reads no more than 1 MiB with at most 20,000 read
+attempts; actor state can change during collection and failed reads are reported.
+It does not execute game functions, attach a debugger, patch memory or change saves.
+Candidate type names and code windows remain diagnostic evidence, not verified
+function boundaries. The server impact callback currently forwards an entity
+and damage amount without forwarding the original hit-part/material context;
+accurate armor filtering is not implemented by this diagnostic.
 
 Native solo mode now keeps one mission debugger attached for the game session.
 Blaze assigns a fresh game/scenario ID to each expedition, retains the hub party,

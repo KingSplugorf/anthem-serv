@@ -214,14 +214,15 @@ async function play(_event, { mode, ip, profileKey }) {
       return;
     }
     const patchOptions = process.env.ANTHEM_MISSION_LIFECYCLE === "0" ? {} : { env: { ...process.env, MISSION_PAIR: "0" } };
-    patches = start(python.command, [...python.prefix, "-X", "utf8", "-I", path.join(ROOT, "tools", "auto_patches.py"), String(gamePid)], patchOptions);
-    patches.stdout?.on("data", missionStatusStream((value) => {
+    const patchProcess = start(python.command, [...python.prefix, "-X", "utf8", "-I", path.join(ROOT, "tools", "auto_patches.py"), String(gamePid)], patchOptions);
+    patches = patchProcess;
+    patchProcess.stdout?.on("data", missionStatusStream((value) => {
       if (game && currentGeneration === generation && !stopping) { expedition = value; status(); }
     }));
-    await launched(patches);
-    patches.once("exit", (code) => {
-      patches = null;
-      if (code !== 0 && game) {
+    await launched(patchProcess);
+    patchProcess.once("exit", (code) => {
+      if (patches === patchProcess) patches = null;
+      if (code !== 0 && game && !stopping && !closing && currentGeneration === generation) {
         log(`Patching failed (${code}); stopping the session. See the patch output above and data/logs/`);
         stopSession().catch((error) => log(error.message));
       }

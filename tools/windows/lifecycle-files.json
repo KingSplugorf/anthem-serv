@@ -60,7 +60,7 @@
     },
     {
       "path": "launcher/main_windows.js",
-      "sha256": "28f0e5d14d05e57b12133edc12cfc5408d63995d62debf03727f604cbfec6978"
+      "sha256": "368691323d2204fc6faf58370d4318d6df549c0a1852513b75a5f827f16cabae"
     },
     {
       "path": "launcher/windows_profiles.js",
@@ -180,11 +180,27 @@
     },
     {
       "path": "tools/combat_patches/ai/player_position.py",
-      "sha256": "34856dadcd175a42c1847507e2c0678b8d8844fd5fbc8538d5653f4ed82710b2"
+      "sha256": "7d225f76d35b72c0c0a6a93a9305bd1596ddf93d5708286f95671017947389d2"
+    },
+    {
+      "path": "tools/combat_patches/ai/player.py",
+      "sha256": "449268a7f9d137ec25c569d80c79913c6060c75aa9a0651abcf8e9d468f318fb"
+    },
+    {
+      "path": "tools/combat_patches/health/health_mirror.py",
+      "sha256": "ee92d713523a92f677d2ba50406a7d2d755654d4dfb9e5ebb7333fd47f2eef96"
     },
     {
       "path": "tools/combat_patches/ai/shots.py",
       "sha256": "59bfd1ff98cdfc3f13b98361dd2b43912e478505f179335549e446284a9f12b9"
+    },
+    {
+      "path": "tools/combat_patches/ai/target.py",
+      "sha256": "e8c938f082725aa59c752985f897b6ad8058885e2a7883839fcf9e37d5f860cb"
+    },
+    {
+      "path": "tools/combat_patches/ai/perception.py",
+      "sha256": "77b949120413cdd050c34ad9cdcef71da79522deeda31e97c31a05d40e5c5f2b"
     },
     {
       "path": "tools/combat_patches/server_damage.py",
@@ -211,6 +227,10 @@
       "sha256": "459d309f6af4b37bbdcae9584bfc1ddb5f3891666f1e234fb3902542a6711551"
     },
     {
+      "path": "tools/windows/inspect_combat.py",
+      "sha256": "af4eb2de1da6788bf42a1de57440def25a3037d49188ca1e6a6a2f2e9908870f"
+    },
+    {
       "path": "tools/tests/test_direct_python.py",
       "sha256": "da7cf1e5ab95801959fb82ce367fbcbd8a8abb35bbd554d58e961fce56bfb265"
     },
@@ -220,11 +240,11 @@
     },
     {
       "path": "tools/windows/build_lifecycle_manifest.py",
-      "sha256": "88e4275ddf68818f77eaff691d718d74e22999bdf4ec14b78ec9801bdb4f9d99"
+      "sha256": "62ebc6e4a9f6ee446f42c4e280c89b927dd2475a754253a1dc10d14ea9811114"
     },
     {
       "path": "tools/windows/README.md",
-      "sha256": "c63863f2bc2c398cbea7a126f4d7ce22a230727528e293bc91a08eb90b91cb8b"
+      "sha256": "321ecf9d35b4090b46305ead6f1ce13a7999fac72d43856775a368edaa03f2c1"
     }
   ]
 }
