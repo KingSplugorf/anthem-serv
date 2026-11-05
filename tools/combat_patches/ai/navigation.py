@@ -25,12 +25,16 @@ SERVER_NAVIGATION_ENTITY = 0x143B78A50
 PATHFINDING_DATA_TABLE = 0x143B79500
 PATHFINDING_DATA_TYPE = 0x14517BF70
 SERVER_NAVPOWER = 0x1446E5A78
-CODE = open(os.path.join(HERE, "navigation.bin"), "rb").read()
-CREATOR_CODE = open(os.path.join(HERE, "navigation_creator.bin"), "rb").read()
+with open(os.path.join(HERE, "navigation.bin"), "rb") as source:
+    CODE = source.read()
+with open(os.path.join(HERE, "navigation_creator.bin"), "rb") as source:
+    CREATOR_CODE = source.read()
 
 
 def navpower_state(process: Process) -> str:
     system = process.qword(SERVER_NAVPOWER)
+    if not system:
+        return "système NavPower serveur pas encore initialisé"
     first, last = process.qword(system + 0x55D8), process.qword(system + 0x55E0)
     meshes = [process.qword(address) for address in range(first, last, 8)]
     types = [struct.unpack("<I", process.read(mesh + 0x96C8, 4))[0] for mesh in meshes]
