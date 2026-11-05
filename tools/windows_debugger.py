@@ -15,7 +15,7 @@ import sys
 import threading
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mission_hooks import MissionHooks, MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY
+from mission_hooks import MissionHooks, MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY, MISSION_DEBUGGER_READY
 from process_memory import open_memory, read_at
 from tls_client_diagnostics import TlsFailureHooks, TLS_FAILURE_SITE
 from windows_memory import kernel, check, modules
@@ -208,7 +208,9 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
             elif tls_diagnostics:
                 hooks.log("attached for certificate diagnostics; mission hooks inactive; retry the game connection")
             else:
-                hooks.log(f"attaché (Win32), GameStartingInfo {hooks.starting_info()}")
+                # GameStartingInfo can disappear while the hub/level changes.
+                # The idle breakpoint plan needs no startup object or data watch.
+                hooks.log("attaché (Win32) : attente d'un lancement de mission")
             while not stop.is_set():
                 event = Event()
                 if not k.WaitForDebugEvent(C.byref(event), 100):
@@ -250,6 +252,8 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
                             initial_breakpoint = False
                             if special_mode:
                                 hooks.mark_ready()
+                            else:
+                                hooks.log(MISSION_DEBUGGER_READY)
                             disposition = CONTINUE
                         elif code == SINGLE_STEP and event.tid in threads:
                             context = Context()

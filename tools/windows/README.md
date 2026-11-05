@@ -397,6 +397,18 @@ close the existing launcher first, then use the fresh-profile command.
 
 ### Mission/freeplay selected but nothing launches
 
+If the debugger exits with `invalid process memory range 0x0+0x10` during
+startup, update `tools/windows_debugger.py`, `tools/mission_hooks.py` and
+`tools/auto_patches.py` together. Older debugger copies eagerly read
+GameStartingInfo to set a data watch before attaching. The current native
+debugger arms only a connection breakpoint while idle, does not read that
+object to log attachment, and enables the dependent startup/watch hooks when a
+mission is selected. The supervisor prints `Win32 mission debugger : posé`
+only after the debugger handles its initial breakpoint, not just after spawning
+Python. The initial game-starting pointer may be temporarily null during a
+level transition. Reads needed for an actual mission still retain their memory
+validation; the fix does not ignore invalid mission-time reads.
+
 The local path is: game sends Blaze `CreateGameTemplate` (0x000a) or
 `StartMatchmakingScenario` (0x0010), Blaze logs `TMPA`/`SCNA`, the join redirect
 starts the internal server, and the mission debugger applies `GameStartingInfo`

@@ -12,6 +12,7 @@ STARTUP_STATE_ENTRY = 0x148010F00
 GATE_ENTRY = 0x148537DA0
 STARTING_INFO_POINTER = 0x144A92578
 ATTRIBUTES = ("playMode", "questId", "desiredDifficulty", "startPoint")
+MISSION_DEBUGGER_READY = "Win32 mission debugger ready"
 ATTRIBUTE_VALUE = re.compile(
     r'"(\w+)"\s*:\s*(?:générique\(\s*(?:"(\d+)"|(\d+))\s*\)|"(\d+)"|(\d+))'
     r'(?=\s*(?:[,}]|$))'

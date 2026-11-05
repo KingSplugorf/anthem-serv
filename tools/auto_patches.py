@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
 from process_memory import open_memory, alive as process_alive
+from mission_hooks import MISSION_DEBUGGER_READY
 
 import os
 import json
@@ -165,6 +166,25 @@ def wait_for_mission_start(pid, start, debugger=None):
     return False
 
 
+def wait_for_mission_debugger(pid, start, debugger, timeout=30):
+    """Only report the native debugger ready after its initial debug event."""
+    deadline = time.monotonic() + timeout
+    while alive(pid):
+        if debugger.poll() is not None:
+            raise RuntimeError(f"Mission debugger exited ({debugger.returncode}) before readiness; inspect data/logs/gdb_active_mission.log")
+        try:
+            with open(mission_log(pid), encoding="utf-8", errors="replace") as log:
+                log.seek(start)
+                if MISSION_DEBUGGER_READY in log.read():
+                    return True
+        except FileNotFoundError:
+            pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"Native mission debugger did not become ready within {timeout:g} seconds; inspect data/logs/gdb_active_mission.log")
+        time.sleep(0.1)
+    return False
+
+
 def combat_choice():
     if not os.path.exists(COMBAT_CHOICE):
         return [script for script, _ in COMBAT_PATCHES] + [HEALTH_FOLLOW]
@@ -285,6 +305,8 @@ def main():
             if mission_debugger.poll() is not None:
                 raise RuntimeError("TLS debugger exited; inspect data/logs/gdb_active_mission.log")
             time.sleep(1)
+        return
+    if native and not wait_for_mission_debugger(pid, mission_log_start, mission_debugger):
         return
     print(f"{time.strftime('%H:%M:%S')} {'Win32' if native else 'GDB'} mission debugger : posé", flush=True)
     if wait_for_mission_start(pid, mission_log_start, mission_debugger):

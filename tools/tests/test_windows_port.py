@@ -302,11 +302,13 @@ class DebuggerTests(unittest.TestCase):
 
 
 class DebuggerLifecycleTests(unittest.TestCase):
-    def exercise(self, fail_callback=False, tls_diagnostics=False, ca_registration=False, activate_mission=False):
+    def exercise(self, fail_callback=False, tls_diagnostics=False, ca_registration=False, activate_mission=False, starting_info_unavailable=False):
         stop = threading.Event()
         k = Mock()
         hooks = Mock()
         hooks.starting_info.return_value = (0x20000, (0,0,0,0))
+        if starting_info_unavailable:
+            hooks.starting_info.side_effect = OSError('invalid process memory range 0x0+0x10')
         hooks.addresses=(0x147d8fe90,0x90080)
         hooks.completed=False
         hooks.report={}
@@ -389,6 +391,9 @@ class DebuggerLifecycleTests(unittest.TestCase):
             hooks.validate.assert_called_once_with('Anthem.exe')
         else:
             hooks.connect.assert_called_once()
+            hooks.log.assert_any_call(debugger.MISSION_DEBUGGER_READY)
+            if not activate_mission:
+                hooks.starting_info.assert_not_called()
             self.assertEqual(configurations[0],1)
             if activate_mission: self.assertIn(0xd0000055,configurations)
             else: self.assertNotIn(0xd0000055,configurations)
@@ -403,6 +408,9 @@ class DebuggerLifecycleTests(unittest.TestCase):
 
     def test_detach_restores_hardware_registers_and_passes_foreign_exceptions(self):
         self.exercise()
+
+    def test_idle_attach_and_detach_do_not_read_missing_game_starting_info(self):
+        self.exercise(starting_info_unavailable=True)
 
     def test_hook_failure_still_continues_event_and_restores_threads(self):
         self.exercise(fail_callback=True)
