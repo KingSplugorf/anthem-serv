@@ -14,8 +14,13 @@ let stopping;
 let generation = 0;
 const owned = new Set();
 const settingsPath = () => path.join(app.getPath("userData"), "windows.json");
-const log = (message) => window?.webContents.send("journal", message);
-const status = () => window?.webContents.send("etat", {
+function send(channel, value) {
+  if (!window || window.isDestroyed()) return;
+  const contents = window.webContents;
+  if (!contents.isDestroyed()) contents.send(channel, value);
+}
+const log = (message) => send("journal", message);
+const status = () => send("etat", {
   localServer: services.length > 0, localServerReady: services.length === 3 && !starting,
   patches: Boolean(patches) || starting, game: Boolean(game), second: false, ready: Boolean(game),
 });
@@ -196,6 +201,7 @@ async function play(_event, { mode, ip }) {
 app.whenReady().then(() => {
   window = new BrowserWindow({ width: 560, height: 640, title: "Anthem Launcher", autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true } });
+  window.on("closed", () => { window = null; });
   ipcMain.handle("choix", () => {
     const config = settings();
     let redirector = null;
@@ -213,6 +219,8 @@ app.on("before-quit", (event) => {
   if (closing) return;
   event.preventDefault();
   closing = true;
-  stopSession().finally(() => app.quit());
+  stopSession()
+    .catch((error) => console.error("Launcher cleanup failed:", error))
+    .finally(() => app.quit());
 });
 app.on("window-all-closed", () => app.quit());

@@ -5,13 +5,20 @@ const vm = require("node:vm");
 const fs = require("node:fs");
 const path = require("node:path");
 
-async function launcherHarness({ deferReadiness = false } = {}) {
+async function launcherHarness({ deferReadiness = false, taskkillThrows = false } = {}) {
   const ipc = new Map();
   const app = new EventEmitter();
   app.whenReady = () => Promise.resolve();
   app.getPath = () => "/user";
-  app.quit = () => {};
-  const spawned = [], killed = [], logs = [];
+  let quitCalls = 0;
+  const quit = new Promise((resolve) => app.once("quit", resolve));
+  app.quit = () => {
+    quitCalls++;
+    const event = { prevented: false, preventDefault() { this.prevented = true; } };
+    app.emit("before-quit", event);
+    if (!event.prevented) app.emit("quit");
+  };
+  const spawned = [], killed = [], logs = [], windows = [], errors = [];
   let ready;
   const readiness = deferReadiness ? new Promise((resolve) => { ready = resolve; }) : Promise.resolve();
   let pid = 100;
@@ -30,12 +37,34 @@ async function launcherHarness({ deferReadiness = false } = {}) {
   }
   function execFile(command, args, options, callback) {
     assert.equal(command, "taskkill.exe");
+    if (taskkillThrows) throw new Error("simulated taskkill failure");
     const child = children.get(Number(args[1]));
     killed.push(child.pid);
     queueMicrotask(() => { child.exitCode = 0; child.emit("exit", 0); callback(null); });
   }
-  class BrowserWindow {
-    constructor() { this.webContents = { send: (event, message) => { if (event === "journal") logs.push(message); } }; }
+  class BrowserWindow extends EventEmitter {
+    constructor() {
+      super();
+      this.destroyed = false;
+      this.rendererDestroyed = false;
+      this.contents = {
+        isDestroyed: () => this.rendererDestroyed,
+        send: (event, message) => {
+          if (this.rendererDestroyed) throw new Error("Object has been destroyed");
+          if (event === "journal") logs.push(message);
+        },
+      };
+      windows.push(this);
+    }
+    get webContents() {
+      if (this.destroyed) throw new Error("Object has been destroyed");
+      return this.contents;
+    }
+    isDestroyed() { return this.destroyed; }
+    destroy() {
+      this.destroyed = this.rendererDestroyed = true;
+      this.emit("closed");
+    }
     loadFile() {}
   }
   const fileSystem = {
@@ -55,10 +84,10 @@ async function launcherHarness({ deferReadiness = false } = {}) {
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "main_windows.js"), "utf8"), {
     require: (name) => { assert.ok(name in modules, name); return modules[name]; },
-    __dirname, process: { env: {} }, console,
+    __dirname, process: { env: {} }, console: { error: (...args) => errors.push(args) },
   }, { filename: "main_windows.js" });
   await new Promise(setImmediate);
-  return { ipc, spawned, killed, logs, ready };
+  return { ipc, spawned, killed, logs, ready, app, quit, windows, errors, quitCalls: () => quitCalls };
 }
 
 test("Windows launcher starts native services, the game and Python patches, then stops only its children", async () => {
@@ -90,4 +119,57 @@ test("cancelling Windows startup during readiness prevents game launch", async (
   await play;
   assert.equal(harness.spawned.length, 4);
   assert.ok(harness.logs.includes("Startup cancelled"));
+});
+
+
+test("shutdown after the window closes still cleans up every owned process", { timeout: 2000 }, async () => {
+  const harness = await launcherHarness();
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  harness.windows[0].destroy();
+  assert.doesNotThrow(() => harness.spawned.at(-1).child.stdout.emit("data", "late patch output"));
+  harness.app.emit("window-all-closed");
+  await harness.quit;
+  assert.equal(new Set(harness.killed).size, 5);
+  assert.equal(harness.quitCalls(), 2);
+  assert.deepEqual(harness.errors, []);
+});
+
+test("destroyed window and renderer objects are never sent status or log messages", async () => {
+  for (const destroyedWindow of [false, true]) {
+    const harness = await launcherHarness();
+    await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+    const window = harness.windows[0];
+    // Simulate teardown before Electron delivers the final closed event.
+    window.destroyed = destroyedWindow;
+    window.rendererDestroyed = true;
+    assert.doesNotThrow(() => harness.spawned.at(-1).child.stdout.emit("data", "late output"));
+    await harness.ipc.get("arreter")();
+    assert.equal(new Set(harness.killed).size, 5);
+  }
+});
+
+test("unexpected cleanup rejection is reported and quit completes without an unhandled promise", { timeout: 2000 }, async () => {
+  const harness = await launcherHarness({ taskkillThrows: true });
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  harness.windows[0].destroy();
+  harness.app.emit("window-all-closed");
+  await harness.quit;
+  await new Promise(setImmediate);
+  assert.equal(harness.quitCalls(), 2);
+  assert.equal(harness.errors.length, 1);
+  assert.match(String(harness.errors[0][1]), /simulated taskkill failure/);
+});
+
+test("closing during service readiness cancels startup without sending to the closed window", { timeout: 2000 }, async () => {
+  const harness = await launcherHarness({ deferReadiness: true });
+  const play = harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  await new Promise(setImmediate);
+  harness.windows[0].destroy();
+  harness.app.emit("window-all-closed");
+  await harness.quit;
+  harness.ready();
+  await play;
+  assert.equal(harness.spawned.length, 4);
+  assert.equal(new Set(harness.killed).size, 3);
+  assert.deepEqual(harness.errors, []);
 });
