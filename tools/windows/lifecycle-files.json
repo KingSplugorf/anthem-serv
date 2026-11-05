@@ -128,7 +128,7 @@
     },
     {
       "path": "tools/mission_supervisor.py",
-      "sha256": "33be19ca855870684f41e8eb2fc70875043697ee8f2842eb096cabe1e04e8988"
+      "sha256": "30a2166a01ba30fcc05b32839913a65240410ea7523dcab30355da94a29ef87c"
     },
     {
       "path": "tools/mission_workers.py",

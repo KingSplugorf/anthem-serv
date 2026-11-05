@@ -101,5 +101,23 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(len(self.workers),2)
         self.assertIsNone(self.supervisor.worker_error)
 
+    def test_game_exit_between_liveness_check_and_debugger_poll_is_normal(self):
+        self.debugger.returncode = 0
+        self.supervisor.alive = lambda _: False
+        self.assertIs(self.supervisor.step(), False)
+
+    def test_matching_debugger_exit_report_handles_delayed_game_liveness(self):
+        self.debugger.returncode = 0
+        (self.data / 'mission_state_123.json').write_text(json.dumps({
+            'run_id': RUN, 'pid': 123, 'phase': 'stopped', 'reason': 'Game process exited'}))
+        self.assertIs(self.supervisor.step(), False)
+
+    def test_successful_debugger_exit_without_matching_game_exit_is_still_an_error(self):
+        self.debugger.returncode = 0
+        (self.data / 'mission_state_123.json').write_text(json.dumps({
+            'run_id': '0'*32, 'pid': 123, 'phase': 'stopped', 'reason': 'Game process exited'}))
+        with self.assertRaisesRegex(RuntimeError, r'Mission debugger exited \(0\)'):
+            self.supervisor.step()
+
 
 if __name__=='__main__': unittest.main()

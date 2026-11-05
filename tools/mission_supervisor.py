@@ -96,6 +96,18 @@ class Supervisor:
 
     def step(self):
         if self.debugger.poll() is not None:
+            # The game can exit between run()'s liveness check and this poll.
+            # A successful debugger exit is normal only with game-exit evidence.
+            if self.debugger.returncode == 0:
+                if not self.alive(self.pid):
+                    return False
+                try:
+                    final = json.loads((self.data / f'mission_state_{self.pid}.json').read_text(encoding='utf-8'))
+                    if (final.get('run_id') == self.run_id and str(final.get('pid')) == str(self.pid)
+                            and final.get('phase') == 'stopped' and final.get('reason') == 'Game process exited'):
+                        return False
+                except (OSError, ValueError):
+                    pass
             raise RuntimeError(f'Mission debugger exited ({self.debugger.returncode}); inspect data/logs/gdb_active_mission.log')
         try:
             state = json.loads((self.data / f'mission_state_{self.pid}.json').read_text(encoding='utf-8'))
@@ -161,7 +173,8 @@ class Supervisor:
     def run(self):
         try:
             while self.alive(self.pid):
-                self.step()
+                if self.step() is False:
+                    break
                 time.sleep(0.1)
         finally:
             self.close()
