@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::{Mutex, PoisonError};
 
 use fire2::Frame;
@@ -6,6 +7,10 @@ use tdf::{Field, Tag, Type, Value};
 use fire2::MessageType;
 
 use crate::{Context, GameSetupMode, Outgoing, components::user_sessions};
+
+mod local_lifecycle;
+use local_lifecycle::LocalSession;
+pub use local_lifecycle::{disconnect_local, handle_local};
 
 pub const COMPONENT: u16 = 0x0004;
 
@@ -828,6 +833,7 @@ impl Default for Lobby {
             games: Vec::new(),
             regrouping: Vec::new(),
             hub_after_regroup: false,
+            local_sessions: BTreeMap::new(),
         }))
     }
 }
@@ -839,6 +845,7 @@ struct Missions {
     regrouping: Vec<u64>,
     /// Le hub du chef s'ouvre quand un membre a rejoint son escouade (« ouvrir »), pas après « escouade ».
     hub_after_regroup: bool,
+    local_sessions: BTreeMap<u64, LocalSession>,
 }
 
 struct Mission {
@@ -1453,7 +1460,12 @@ fn gather_squads(context: &Context, missions: &mut Missions) -> Vec<Outgoing> {
                 && mission.description.game_id != leader_squad
                 && mission.description.roster.len() == 1
         })
-        .map(|squad| (squad.description.game_id, squad.description.roster[0].persona))
+        .map(|squad| {
+            (
+                squad.description.game_id,
+                squad.description.roster[0].persona,
+            )
+        })
         .collect();
     for (squad_id, persona) in lone {
         missions

@@ -132,8 +132,39 @@ def collect(root, pid, get=fetch):
                                   'checked_quest': selected, 'point': table.get('quetes', {}).get(selected)}
     except (OSError, ValueError, TypeError) as error:
         report['quest_points'] = {'error': str(error)}
+    for name in ('mission_state', 'mission_supervisor'):
+        path = root / f'data/{name}_{pid}.json'
+        try:
+            if path.stat().st_size > 1 << 20:
+                raise ValueError('Lifecycle report exceeds limit')
+            value = json.loads(path.read_text(encoding='utf-8'))
+            if not isinstance(value, dict) or str(value.get('pid')) != str(pid):
+                raise ValueError('Lifecycle report does not match this PID')
+            report[name] = value
+        except (OSError, ValueError) as error:
+            report[name] = {'error': str(error)}
+    lifecycle = report['mission_state']
+    run_id, generation = lifecycle.get('run_id'), lifecycle.get('generation')
+    if isinstance(run_id, str) and re.fullmatch(r'[a-f0-9]{32}', run_id) and type(generation) is int and generation > 0:
+        for name in ('mission', 'mission_prepare'):
+            info, lines = tail(root / f'data/logs/{name}_{pid}_{run_id[:8]}_{generation}.log')
+            info['tail'] = [line[:2000] for line in lines[-80:]]
+            report[name + '_worker'] = info
+    lifecycle_events = []
+    _, blaze_lines = tail(root / 'data/logs/blaze.log')
+    for line in blaze_lines:
+        if line.startswith('MISSION_EVENT = '):
+            try:
+                record = json.loads(line[len('MISSION_EVENT = '):])
+                if isinstance(record, dict):
+                    lifecycle_events.append(record)
+            except ValueError:
+                pass
+    report['blaze']['recent_lifecycle_events'] = lifecycle_events[-20:]
     # These labels describe evidence in the log tail, not a confirmed cause.
-    if any('état de démarrage 8' in line for line in mission_lines):
+    if lifecycle.get('schema') == 1 and lifecycle.get('phase'):
+        stage = 'lifecycle_' + str(lifecycle['phase'])
+    elif any('état de démarrage 8' in line for line in mission_lines):
         stage = 'internal_server_started_once'
     elif any('lancement de mission :' in line for line in mission_lines):
         stage = 'connection_hook_reached_no_startup_8_seen'

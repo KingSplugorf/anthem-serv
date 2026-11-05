@@ -59,8 +59,8 @@ def main() -> None:
             print("player relevé, vie au maximum")
             return
         process.write(HEAL_REQUEST, b"\x00")
-        player = process.qword(player.PLAYER_SLOT)
-        components = process.qword(player + 0x58)
+        character = process.qword(player.PLAYER_SLOT)
+        components = process.qword(character + 0x58)
         for index in range(process.read(components + 8, 1)[0]):
             component = process.qword(components + 0x20 + index * 0x20)
             if component and process.qword(component) == 0x143A88050:

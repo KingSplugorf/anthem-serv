@@ -88,6 +88,7 @@ name = "blaze"
 version = "0.1.0"
 dependencies = [
  "fire2",
+ "serde_json",
  "tdf",
  "tls",
  "tokio",

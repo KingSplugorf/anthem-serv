@@ -63,14 +63,21 @@ secondGame.addEventListener("click", () => window.lanceur.second());
 stop.addEventListener("click", () => window.lanceur.arreter("jeu1"));
 stopSecond.addEventListener("click", () => window.lanceur.arreter("jeu2"));
 window.lanceur.surJournal(append);
-window.lanceur.surEtat(({ localServer, localServerReady, patches, game, second, ready }) => {
+window.lanceur.surEtat(({ localServer, localServerReady, patches, game, second, ready, expedition }) => {
   busy = patches || game;
   refreshControls();
   changeFolder.disabled = game;
   secondGame.disabled = !ready || second;
   stop.disabled = !patches && !game;
   stopSecond.disabled = !second;
-  state.textContent = [game ? "Game running" : patches ? "Starting…" : localServer && !localServerReady ? "Starting the local server…" : "Ready", localServerReady ? "local server running" : "", second ? "second game running" : ""].filter(Boolean).join(", ");
+  const mission = expedition ? expedition.error ? "Expedition needs attention — see the log" :
+    expedition.phase === "active" ? `Expedition ${expedition.generation} running` :
+    expedition.phase === "starting" ? "Starting expedition…" :
+    expedition.phase === "queued" ? "Mission queued…" :
+    expedition.ready ? "Ready for another expedition" :
+    expedition.phase === "failed" ? "Expedition launch failed — see the log" :
+    expedition.phase === "returning" ? "Expedition ended — preparing next launch…" : "" : "";
+  state.textContent = [game ? "Game running" : patches ? "Starting…" : localServer && !localServerReady ? "Starting the local server…" : "Ready", localServerReady ? "local server running" : "", mission, second ? "second game running" : ""].filter(Boolean).join(", ");
 });
 
 window.lanceur.choix().then(({ mode, modes: available, gameFolder: folder, ip: address, lan: lanAddress, redirector, profiles, selectedProfile }) => {

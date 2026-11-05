@@ -79,6 +79,7 @@ pub struct Context {
     pub mission_server: Option<u64>,
     pub mission_in_game: bool,
     pub mission_pair: bool,
+    pub local_lifecycle: bool,
     pub personas: Vec<(IpAddr, Persona)>,
     /// Identité par défaut (JOUEUR_ID, JOUEUR_NOM) quand `for_peer` l'a remplacée par un persona déclaré.
     pub default_identity: Option<(u64, String)>,
@@ -157,6 +158,14 @@ impl Outgoing {
 
 /// Comme `handle`, avec les parties de mission partagées entre connexions quand le mode pair est actif.
 pub fn handle_shared(frame: &Frame, context: &Context, lobby: &Lobby) -> Vec<Outgoing> {
+    if context.local_lifecycle
+        && !context.mission_pair
+        && frame.msg_type == MessageType::Message
+        && frame.component == components::game_manager::COMPONENT
+        && let Some(frames) = components::game_manager::handle_local(frame, context, lobby)
+    {
+        return frames.into_iter().map(Outgoing::sender).collect();
+    }
     let shared = (context.mission_pair
         && frame.msg_type != MessageType::Ping
         && frame.component == components::game_manager::COMPONENT)
@@ -183,7 +192,9 @@ pub fn hub_command(text: &str, context: &Context, lobby: &Lobby) -> Option<Vec<O
     match text.trim() {
         "ouvrir" => Some(open_shared_hubs(context, lobby)),
         "placer" => Some(place_squad_members(context, lobby)),
-        "escouade" => Some(components::game_manager::gather_shared_squads(context, lobby)),
+        "escouade" => Some(components::game_manager::gather_shared_squads(
+            context, lobby,
+        )),
         "en_jeu" => Some(components::game_manager::start_shared_hubs(lobby)),
         _ => None,
     }
@@ -191,6 +202,10 @@ pub fn hub_command(text: &str, context: &Context, lobby: &Lobby) -> Option<Vec<O
 
 /// Fermeture de la connexion d'un persona : il quitte les missions partagées.
 pub fn disconnect(context: &Context, lobby: &Lobby) -> Vec<Outgoing> {
+    if context.local_lifecycle && !context.mission_pair {
+        components::game_manager::disconnect_local(context, lobby);
+        return Vec::new();
+    }
     if !context.mission_pair {
         return Vec::new();
     }

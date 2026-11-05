@@ -123,11 +123,13 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
     notification_delay: Duration,
 ) -> std::io::Result<()> {
     let (sender, mut inbox) = mpsc::unbounded_channel();
-    shared
-        .connections
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(context.persona_id, sender.clone());
+    if !context.local_lifecycle || context.mission_pair {
+        shared
+            .connections
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(context.persona_id, sender.clone());
+    }
     println!(
         "{peer} : persona {} ({}), BIGS {}",
         context.persona_id, context.player_name, context.bigs_url
@@ -139,18 +141,22 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
         &context,
         &shared,
         &mut inbox,
+        &sender,
         notification_delay,
     )
     .await;
-    let departure = blaze::disconnect(&context, &shared.lobby);
-    shared.route(&peer, departure);
     let mut connections = shared.connections.lock().unwrap_or_else(|e| e.into_inner());
-    if connections
+    let departure = if connections
         .get(&context.persona_id)
         .is_some_and(|registered| registered.same_channel(&sender))
     {
         connections.remove(&context.persona_id);
-    }
+        blaze::disconnect(&context, &shared.lobby)
+    } else {
+        Vec::new()
+    };
+    drop(connections);
+    shared.route(&peer, departure);
     result
 }
 
@@ -161,17 +167,45 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
     context: &Context,
     shared: &Shared,
     inbox: &mut mpsc::UnboundedReceiver<Frame>,
+    sender: &mpsc::UnboundedSender<Frame>,
     notification_delay: Duration,
 ) -> std::io::Result<()> {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 16 * 1024];
     let mut index = 0;
+    let local = context.local_lifecycle && !context.mission_pair;
+    let mut registered = !local;
     loop {
         while let Some((frame, consumed)) = Frame::decode(&buffer) {
             buffer.drain(..consumed);
             log_frame(peer, &frame, captures, index).await;
             index += 1;
-            let outgoing = blaze::handle_shared(&frame, context, &shared.lobby);
+            let outgoing = if local && frame.component == GAME_MANAGER {
+                // Ownership and session mutation share one critical section.
+                // Capture logging can yield to a replacement connection, so
+                // it must finish before checking who still owns this persona.
+                let mut connections = shared.connections.lock().unwrap_or_else(|e| e.into_inner());
+                if !registered && frame.msg_type == MessageType::Message {
+                    if connections.contains_key(&context.persona_id) {
+                        blaze::disconnect(context, &shared.lobby);
+                    }
+                    connections.insert(context.persona_id, sender.clone());
+                    registered = true;
+                }
+                if registered
+                    && !connections
+                        .get(&context.persona_id)
+                        .is_some_and(|current| current.same_channel(sender))
+                {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionAborted,
+                        "Gameplay connection replaced",
+                    ));
+                }
+                blaze::handle_shared(&frame, context, &shared.lobby)
+            } else {
+                blaze::handle_shared(&frame, context, &shared.lobby)
+            };
             for reply in shared.route(peer, outgoing) {
                 write_frame(stream, peer, &reply, notification_delay).await?;
             }
@@ -256,6 +290,7 @@ async fn main() -> std::io::Result<()> {
         }),
         mission_in_game: env_or("BLAZE_MISSION_EN_JEU", "0") == "1",
         mission_pair: env_or("BLAZE_MISSION_PAIR", "0") == "1",
+        local_lifecycle: env_or("BLAZE_LOCAL_LIFECYCLE", "0") == "1",
         default_identity: None,
         squad_auto: env_or("BLAZE_ESCOUADE_AUTO", "0") == "1",
         hub_sharing: env_or("BLAZE_HUB_PARTAGE", "0") == "1",
@@ -277,6 +312,9 @@ async fn main() -> std::io::Result<()> {
     );
     let listen_host = env_or("LISTEN_HOST", if cfg!(windows) { "0.0.0.0" } else { "::" });
     let listener = TcpListener::bind((listen_host.as_str(), port)).await?;
+    if context.local_lifecycle && !context.mission_pair {
+        println!("BLAZE_LOCAL_LIFECYCLE_READY = 1");
+    }
     let hub_command_file = PathBuf::from(env_or("BLAZE_COMMANDE_HUB", "data/hub_command"));
     println!(
         "blaze sur {port}, missions en pair hébergé : {}, escouade automatique : {}, hub partagé : {}, personas par adresse : {:?}",

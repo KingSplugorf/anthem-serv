@@ -5,6 +5,10 @@
 /data/captures/
 /data/crash_seh.log
 /data/local_ca_*.json
+/data/mission_state_*.json
+/data/mission_supervisor_*.json
+/data/mission_lease_*.bin
+/.lifecycle-backup-*/
 /game.conf
 /game.conf.avant
 __pycache__/

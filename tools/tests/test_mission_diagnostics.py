@@ -60,6 +60,21 @@ class MissionDiagnosticsTests(unittest.TestCase):
         self.assertFalse(report['mission_hook']['exists'])
         self.assertEqual(set(self.root.rglob('*')), before)
 
+    def test_current_generation_wins_over_a_previous_expeditions_startup_log(self):
+        run = '1234567890abcdef1234567890abcdef'
+        self.write('data/active_mission_123.txt', '00:00:02 état de démarrage 8 : old mission\n')
+        state = {'schema': 1, 'pid': 123, 'run_id': run, 'generation': 2, 'phase': 'starting'}
+        self.write('data/mission_state_123.json', json.dumps(state))
+        self.write('data/mission_supervisor_123.json', json.dumps({**state, 'worker_pid': None}))
+        self.write(f'data/logs/mission_123_{run[:8]}_1.log', 'stale first expedition\n')
+        self.write(f'data/logs/mission_123_{run[:8]}_2.log', 'current second expedition\n')
+        self.write('data/logs/blaze.log', 'MISSION_EVENT = ' + json.dumps({'event': 'requested', 'game_id': 3}) + '\n')
+        report = inspect_mission.collect(self.root, 123, self.api)
+        self.assertEqual(report['observed_stage'], 'lifecycle_starting')
+        self.assertEqual(report['mission_worker']['tail'], ['current second expedition'])
+        self.assertEqual(report['blaze']['recent_lifecycle_events'][0]['game_id'], 3)
+        self.assertNotIn('stale first expedition', json.dumps(report))
+
     def test_large_logs_are_bounded_and_http_bodies_are_not_exported(self):
         self.write('data/logs/bigs.log', 'response: private body\nGET /api/playercard/ -> 200\n')
         self.write('data/logs/blaze.log', 'old line\n' * 100 + 'ATTR = {"Ready": "true"}\n')

@@ -1,0 +1,210 @@
+{
+  "schema": 1,
+  "purpose": "native-expedition-lifecycle",
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "d2a084ba9211b5487971af0e6058c123e5f987d68c09929cfd0887213e3184a1"
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "a1b334e10a674b8e27248bfdbb23bad34c5f7d10cf9b14f3c2172ec1c2a0378c"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "d9a34ad118fb7919edee3821afe19f24138b92d8359b44d1726ce52830c6b781"
+    },
+    {
+      "path": "crates/blaze/Cargo.toml",
+      "sha256": "831bad443ea220c93f9aa782b3d69f9ad4270284e4329ac288130aeae9619852"
+    },
+    {
+      "path": "crates/blaze/src/lib.rs",
+      "sha256": "b6210a3d4c5a12de0b1b697f3f8d38f50699fe1046c0b52866304cd2bb6c29a7"
+    },
+    {
+      "path": "crates/blaze/src/main.rs",
+      "sha256": "c1a8f3e22977446bc5744720707f8de8719db70ba7ce642652367bfa955cda28"
+    },
+    {
+      "path": "crates/blaze/src/components/game_manager.rs",
+      "sha256": "da4b8ae93917ace194be6f5d7b5baa85566ed4de55d4bb94e8966ecbdc5f6622"
+    },
+    {
+      "path": "crates/blaze/src/components/game_manager/local_lifecycle.rs",
+      "sha256": "7ecec0814639cc86e9e42952e8a0066c4d63aa26b8be3e084d101b246faabfd9"
+    },
+    {
+      "path": "crates/bigs/src/lib.rs",
+      "sha256": "5a024debe2f974c59a01335630ff7083dc4a9aa54ba64e0e60b55e5f84563f2a"
+    },
+    {
+      "path": "crates/bigs/src/main.rs",
+      "sha256": "8305adf69ff6b8c4b388c1b9b6b2ed2cbc32677c8df080d9690a62352b87b54c"
+    },
+    {
+      "path": "crates/bigs/src/state.rs",
+      "sha256": "9f417a5a2535767974e40d6eb4ea4d62817e2a243b3add5d144ca218f7101456"
+    },
+    {
+      "path": "crates/bigs/src/startup.rs",
+      "sha256": "c485dadfa0f1b980dddcf1be4c2f25379156a04d7f143c793559acd92bf07566"
+    },
+    {
+      "path": "crates/bigs/src/characters.rs",
+      "sha256": "c4a01884202dab1fb6c683d3a6ecf911a4a05ef78abef23b4c83bed7367a2ccc"
+    },
+    {
+      "path": "launcher/main.js",
+      "sha256": "952fb07c000bec6fbb9567bb0d7239f1b6d434c686c6b8bd459947dca526a433"
+    },
+    {
+      "path": "launcher/main_windows.js",
+      "sha256": "28f0e5d14d05e57b12133edc12cfc5408d63995d62debf03727f604cbfec6978"
+    },
+    {
+      "path": "launcher/windows_profiles.js",
+      "sha256": "26dd202d9f7f40d7f06ac3e60b1674d4c49b874dfc54d4d1d1bf10bb75911bb3"
+    },
+    {
+      "path": "launcher/windows_runtime.js",
+      "sha256": "fd4ea840b19fee2bb81b2a91959cd564c5cec7e1aacf79eff3b39a8c9ae64ba8"
+    },
+    {
+      "path": "launcher/hosts.js",
+      "sha256": "1f5f5f8515ceed490fc9979ffb928f81c1f64f1f55b482994c7536001af9485e"
+    },
+    {
+      "path": "launcher/game_conf.js",
+      "sha256": "20fad65f10f45574b19f5bb9bddc96034d826362acb4e2ef19f8bf53076d1573"
+    },
+    {
+      "path": "launcher/modes.js",
+      "sha256": "e13a75c49ea89ec64582507fd7742758e21753f52a2d4f6cb47c5705b63f6b6f"
+    },
+    {
+      "path": "launcher/mission_status.js",
+      "sha256": "1b70309e395846007ef35a635281bc95e927688f666482611d6f879a3d5c82b8"
+    },
+    {
+      "path": "launcher/renderer.js",
+      "sha256": "3171587e6371476418c707471090c48150c145d1823d2bdc8a3f542fb4c45a0f"
+    },
+    {
+      "path": "launcher/preload.js",
+      "sha256": "bb953e18c867ab8c643324be671efeaadecc849b4c051f6829f84e0ab1f9f43d"
+    },
+    {
+      "path": "launcher/index.html",
+      "sha256": "78640218baa4118675f0b36ddc94a9055c5e1a52df5601d0d3675ea822d710b0"
+    },
+    {
+      "path": "tools/auto_patches.py",
+      "sha256": "d1de397072c34e36590c45ffe1c1b2af97f309478199584c3d0fc6345f3207c7"
+    },
+    {
+      "path": "tools/mission_hooks.py",
+      "sha256": "41274a7301f40a52b51fac34bb75f075828fb4c038e754f24fe9f104caf59410"
+    },
+    {
+      "path": "tools/hub_game.py",
+      "sha256": "c6c0bb81558a858804feec1ce519b55c26d8b11119f8206c139da029f7a04894"
+    },
+    {
+      "path": "tools/patch_finrachaos.py",
+      "sha256": "2f9fd4cb9e59df6396d1ff1c075cedcd52ad75a9957591a71b94d93d04128ad7"
+    },
+    {
+      "path": "tools/mission_lifecycle.py",
+      "sha256": "17f1b54b21f033469264528c0e3c2fb56edc90b665d856ebd35fa9d6addc1ac8"
+    },
+    {
+      "path": "tools/mission_lease.py",
+      "sha256": "6ed936fb2e93dcb4e4d227246e3dda6c4bbc4de813b538860a05e0e09276806e"
+    },
+    {
+      "path": "tools/mission_jobs.py",
+      "sha256": "d74a26d7788f051601903f4cf17635f84dca3a8214216d48a6805fc2b5389f08"
+    },
+    {
+      "path": "tools/mission_supervisor.py",
+      "sha256": "33be19ca855870684f41e8eb2fc70875043697ee8f2842eb096cabe1e04e8988"
+    },
+    {
+      "path": "tools/mission_workers.py",
+      "sha256": "5cac6e1819b6a1b60324ee52bd7c7edb4a7846c6fccc36a927d62b9606d4e666"
+    },
+    {
+      "path": "tools/windows_debugger.py",
+      "sha256": "f1eaedc6b9c766b9ba4ffa4386a16e3980035305e4321bca2113ac16fb498c15"
+    },
+    {
+      "path": "tools/windows_ca_loader.py",
+      "sha256": "052f0d0da14b70fa86bb1c170b503af164fd9b0d653e4e941ee11850578f62d4"
+    },
+    {
+      "path": "tools/tls_client_diagnostics.py",
+      "sha256": "19dd64c7abd8a70a492897a37c5a3483f88bcb62d8ac95f9ac1705e7239cc09c"
+    },
+    {
+      "path": "tools/windows_memory.py",
+      "sha256": "83590e793f23081dffb825193029a07e4e2259a521b73348e84169e6cdaad0f5"
+    },
+    {
+      "path": "tools/process_memory.py",
+      "sha256": "ea98f2d627013b83fc487cfe42cdf7149d40dc3a537d129486fccef0cfb206f0"
+    },
+    {
+      "path": "tools/default_point.py",
+      "sha256": "b470b86022406a75433b150bc3b4ef31dc3ea1871c96d689010cce59cddb4973"
+    },
+    {
+      "path": "tools/missions_inproc.py",
+      "sha256": "e0ef867ac0e4423edb39dc6d01e41e9c3a2255f8af2f65c64ee04f9b7beea60b"
+    },
+    {
+      "path": "tools/launch_from_hub.py",
+      "sha256": "aca13433adc256164a42b0b05bbafe34f0ecfe6c3148ffa50765f94ff040b8ec"
+    },
+    {
+      "path": "tools/end_expedition.py",
+      "sha256": "164c397cf4876d86fcd047b39aedca877bcaff499141186a1ae55f3528e8c1a2"
+    },
+    {
+      "path": "tools/combat_patches/ai/navigation.py",
+      "sha256": "4708e3952d358654e1e84bb71856aa1b35f1d92002ffc6f838ed4583d2eb982c"
+    },
+    {
+      "path": "tools/combat_patches/ai/player_position.py",
+      "sha256": "34856dadcd175a42c1847507e2c0678b8d8844fd5fbc8538d5653f4ed82710b2"
+    },
+    {
+      "path": "tools/combat_patches/ai/shots.py",
+      "sha256": "59bfd1ff98cdfc3f13b98361dd2b43912e478505f179335549e446284a9f12b9"
+    },
+    {
+      "path": "tools/windows/play-profile.ps1",
+      "sha256": "1d20bea12b3de64c409a9e84510e37e7255a9b1eac240e46d4dd6cc384a42957"
+    },
+    {
+      "path": "tools/windows/play-fresh.ps1",
+      "sha256": "785319d878be24391f23a5fdd06553d1a4da7b7e65e537c611baf7cdc1390210"
+    },
+    {
+      "path": "tools/windows/inspect_mission.py",
+      "sha256": "3553277508167861a433bde2b770e46077b27dd50069e6bd3cdcf18463c28a51"
+    },
+    {
+      "path": "tools/windows/update-lifecycle.ps1",
+      "sha256": "ed1e3010984e7af4bfc3168fe8726ce6443b39d381d19555227a8d7ed5a95673"
+    },
+    {
+      "path": "tools/windows/build_lifecycle_manifest.py",
+      "sha256": "1b8e0977464a607414711f33c57d57f2552583291b4571bb1917feee2314f698"
+    },
+    {
+      "path": "tools/windows/README.md",
+      "sha256": "64bae5ba30f2a6b252c92fa86eeceb6125c5a9409e3ef05d713ea14f7ca73745"
+    }
+  ]
+}

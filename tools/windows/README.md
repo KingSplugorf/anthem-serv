@@ -331,7 +331,7 @@ variable explicitly chooses a different default. A selection made in the window
 overrides that default for the next Play action. Only the Windows launcher exposes
 these controls; the Linux launcher retains its existing flow.
 
-The `play-profile.ps1` helper rebuilds BIGS, preserves any replaced binary, and
+The `play-profile.ps1` helper rebuilds all three services, preserves replaced binaries, and
 starts the normal launcher. `-Profile Creator` also selects an empty creator slot
 from the command line; `-ProfileId` chooses its independent save slot. The existing
 `play-fresh.ps1` command is a compatibility wrapper for a pre-created pilot and
@@ -345,12 +345,12 @@ Close the game and launcher before running this from the repository root:
 .\tools\windows\play-fresh.ps1 -PilotName 'KingSplugorf' -Gender Male -ProfileId kingsplugorf -LoadLocalCa
 ```
 
-This rebuilds BIGS and opens the normal launcher. Click **Play**. `-LoadLocalCa`
+This rebuilds all three services and opens the normal launcher. Click **Play**. `-LoadLocalCa`
 enables the existing experimental local-certificate importer for the supported
 game build; omit it if your executable already accepts the server certificate.
 The script keeps the existing TLS hostname and service ports. If a complete
-`bin/` or release service set takes priority, it backs up that set's BIGS executable
-before installing the new build there.
+`bin/` or release service set takes priority, it backs up all three executables
+before installing the new builds there.
 
 The fresh slot starts with a saved male pilot named `KingSplugorf`, level 1,
 zero XP, the Ranger and its starter equipment. The development Forge catalog is
@@ -426,7 +426,7 @@ identity). One Windows report showed a valid request for quest `680915601` and
 mission game `2` finalized, but only the debugger's attach entry and no connection
 hook activity. That request already used string values, so the numeric-parser
 fix was not its blocker. The missing startup setting is a concrete port mismatch;
-its effect on the actual game still requires an on-device retry.
+restoring this default allowed the supported Windows game to launch freeplay.
 
 With the launcher/game still running, attempt the launch, then in a second
 PowerShell window run from the repository root:
@@ -448,10 +448,86 @@ The launch parser now accepts string and integer generic attributes, matching
 Blaze's accepted forms, and leaves the current level unchanged when launch data
 is incomplete. This fixes a parser mismatch; it does not establish that the
 mismatch caused a particular player's failed attempt. Native mission/combat
-behavior still needs on-device testing. The current patch lifecycle prepares
-one mission launch per game process; restart the game before another mission
-test. Fresh-profile campaign unlock progression is not yet implemented, and
-the diagnostics report its saved freeplay state without modifying it.
+behavior remains experimental. The repeatable lifecycle below keeps mission hooks
+attached for subsequent launches. Fresh-profile campaign unlock progression is
+not yet implemented; the diagnostics report saved freeplay state without changing it.
+
+### Repeatable native expeditions
+
+Native solo mode now keeps one mission debugger attached for the game session.
+Blaze assigns a fresh game/scenario ID to each expedition, retains the hub party,
+and ignores late exit messages for older expeditions. Exact retransmissions of a
+launch request reuse its session. The first mission's dedicated-host advertisement
+retains the previously working wire format.
+
+Startup overrides apply only while the internal server starts. Once startup
+reaches state 8, those overrides and the data watch are removed. Each expedition
+gets its own combat worker tree and write lease. End Expedition's existing success
+callback revokes the lease before restoring the hub launch point and clearing
+cached player pointers. The supervisor stops that expedition's followers and
+refreshes mission/start-point metadata before showing **Ready for another
+expedition**. Old workers cannot write under a newer expedition's lease.
+
+Cancellation, disconnect, replacement requests and a 180-second startup timeout
+also release the current launch. A launch-point scan has a 120-second preparation
+limit; failed preparation is reported without replaying an old quest. These paths
+reset patch state; the game's own existing flow performs the level transfer.
+The code does not force a teleport or implement campaign rewards/progression.
+
+Install the source update with the pinned revision supplied alongside the release:
+
+```powershell
+.\tools\windows\update-lifecycle.ps1 -Revision '<full 40-character commit>' -Start -LoadLocalCa
+```
+
+Close the game and launcher first. The updater downloads every manifest-listed
+source file, verifies SHA-256 hashes, and backs up replaced sources under
+`.lifecycle-backup-*` before installing them. Saves, certificates, game.conf,
+installed game files, launcher dependencies and npm configuration are preserved.
+`-Start` rebuilds all three services and opens the launcher with **Original save**;
+use its save selector for another slot. It does not reinstall Electron.
+The source manifest can be regenerated with
+`python3 tools/windows/build_lifecycle_manifest.py` before a release.
+
+Validate on the supported Windows game in one process: launch freeplay, use
+End Expedition, wait for Fort Tarsis and **Ready for another expedition**, launch
+a different available mission, return, then launch freeplay again. Repeated hooks,
+worker cancellation and protocol sessions are covered by automated tests and a
+Windows cross-build; the complete multi-expedition game round trip still needs
+on-device verification. Existing freeplay entry was confirmed before this change.
+
+If a transition stalls, run `inspect_mission.py` as above. It includes
+`data/mission_state_PID.json`, `data/mission_supervisor_PID.json`, current
+per-expedition worker/preparation logs and recent structured Blaze lifecycle
+events. A prior startup-8 log entry is not treated as the current mission state.
+
+For comparison with the previous single-expedition mode, close existing sessions
+and run from the repository root:
+
+```powershell
+$env:ANTHEM_MISSION_LIFECYCLE = '0'
+try { .\tools\windows\play-profile.ps1 -Profile Development -LoadLocalCa }
+finally { Remove-Item Env:ANTHEM_MISSION_LIFECYCLE -ErrorAction SilentlyContinue }
+```
+
+This opt-out disables lifecycle handling on both the native hooks and Blaze.
+Linux/GDB and multiplayer experimentation retain their existing behavior.
+
+Developer checks from the repository root:
+
+```text
+python3 -m unittest discover -s tools/tests -v
+npm --prefix launcher test
+cargo test --locked --workspace
+cargo build --locked --workspace --bins
+python3 tools/tests/check_blaze_lifecycle_wire.py target/debug/blaze
+pwsh -NoProfile -File tools/tests/test_lifecycle_updater.ps1
+```
+
+The live wire check needs OpenSSL and a locally built Blaze binary (use
+`target/debug/blaze.exe` on Windows). It creates temporary certificates, verifies
+TLS with that CA, uses an ephemeral loopback port and cleans up its own server.
+The updater check mocks downloads and operates entirely in a temporary fixture.
 
 For a connection error before login, inspect `data/logs/redirector.log`. The
 redirector records the ClientHello's server name, cipher suites and signature

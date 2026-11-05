@@ -77,23 +77,23 @@ def main() -> None:
     checked, checked_at, is_local = 0, 0.0, False
     while time.monotonic() < deadline and process_alive(pid):
         try:
-            player = process.qword(player.PLAYER_SLOT)
+            character = process.qword(player.PLAYER_SLOT)
             try:
-                aiming = process.qword(player + 0x7A8) if player and process.qword(player) == player.SERVER_CHARACTER else 0
-                valid = bool(aiming) and process.qword(aiming) == AIMING_COMPONENT and owned_by(process, aiming, player)
+                aiming = process.qword(character + 0x7A8) if character and process.qword(character) == player.SERVER_CHARACTER else 0
+                valid = bool(aiming) and process.qword(aiming) == AIMING_COMPONENT and owned_by(process, aiming, character)
             except OSError:
                 aiming, valid = 0, False
-            if valid and (player != checked or time.monotonic() - checked_at >= LOCAL_CHECK_SECONDS):
-                was_local = is_local or player != checked
-                is_local = local(process, player)
+            if valid and (character != checked or time.monotonic() - checked_at >= LOCAL_CHECK_SECONDS):
+                was_local = is_local or character != checked
+                is_local = local(process, character)
                 if was_local and not is_local:
-                    print(f"{time.strftime('%H:%M:%S')} personnage {player:#x} non établi comme celui du player local (connexion distante ou serveur illisible) : position non écrite", flush=True)
-                checked, checked_at = player, time.monotonic()
+                    print(f"{time.strftime('%H:%M:%S')} personnage {character:#x} non établi comme celui du player local (connexion distante ou serveur illisible) : position non écrite", flush=True)
+                checked, checked_at = character, time.monotonic()
             valid = valid and is_local
             if not valid:
-                search_at = search_at or time.monotonic() + (0.0 if player in (0, 0xCCCCCCCCCCCCCCCC) else LOST_SECONDS)
+                search_at = search_at or time.monotonic() + (0.0 if character in (0, 0xCCCCCCCCCCCCCCCC) else LOST_SECONDS)
                 if time.monotonic() >= search_at:
-                    print(f"{time.strftime('%H:%M:%S')} personnage du player {player:#x} invalide : recherche du nouveau", flush=True)
+                    print(f"{time.strftime('%H:%M:%S')} personnage du player {character:#x} invalide : recherche du nouveau", flush=True)
                     found = refresh_player(process)
                     search_at = None if found else time.monotonic() + retry
                     retry = LOST_SECONDS if found else min(2 * retry, LONGEST_RETRY_SECONDS)
@@ -103,9 +103,9 @@ def main() -> None:
                 x, y, z = client_position(process) or aimed_position(process, aiming)
                 if abs(x) < 1e5 and abs(y) < 1e5 and abs(z) < 1e5 and (x, y, z) != (0.0, 0.0, 0.0):
                     position = struct.pack("<3f", x, y, z)
-                    process.memory.seek(player + 0x1B0)
+                    process.memory.seek(character + 0x1B0)
                     process.memory.write(position)
-                    process.memory.seek(transform_translation(process, player))
+                    process.memory.seek(transform_translation(process, character))
                     process.memory.write(position)
                     copies += 1
                     if copies % 1200 == 1:

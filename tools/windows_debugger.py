@@ -7,7 +7,7 @@ Requires 64-bit CPython and the repository's exact game build at image base
 """
 import ctypes as C
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import os
 from pathlib import Path
 import struct
@@ -19,6 +19,7 @@ from mission_hooks import MissionHooks, MISSION_CONNECT_STATE, STARTUP_STATE_ENT
 from process_memory import open_memory, read_at
 from tls_client_diagnostics import TlsFailureHooks, TLS_FAILURE_SITE
 from windows_memory import kernel, check, modules
+from mission_lifecycle import RepeatingMissionHooks, LEAVE_SUCCESS
 
 DWORD, QWORD, HANDLE = C.c_uint32, C.c_uint64, C.c_void_p
 CONTINUE, NOT_HANDLED = 0x00010002, 0x80010001
@@ -115,15 +116,62 @@ def replace_configuration(context, old_addresses, addresses, *, old_watchpoint, 
 
 
 def mission_breakpoints(hooks):
+    if isinstance(hooks, RepeatingMissionHooks) and hooks.phase == 'active':
+        return (MISSION_CONNECT_STATE, LEAVE_SUCCESS), None
     # The dependent handlers do nothing until a mission has been selected.
     # In particular, an idle PlayMode write watch can stop every game thread
     # for writes that never need a Python callback in the hub.
     if hooks.launched is None:
         return (MISSION_CONNECT_STATE,), None
-    pointer, _ = hooks.starting_info()
+    try:
+        pointer, _ = hooks.starting_info()
+    except OSError:
+        if isinstance(hooks, RepeatingMissionHooks):
+            return (MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY), None
+        raise
     if pointer % 4:
         raise OSError('GameStartingInfo watchpoint is not aligned')
     return (MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, GATE_ENTRY, pointer), 3
+
+
+@contextmanager
+def frozen_threads(k, threads):
+    """Pause only owned debuggee threads; undo every successful suspension."""
+    suspended = []
+    try:
+        for handle in list(threads.values()):
+            status = DWORD()
+            check(k.GetExitCodeThread(handle, C.byref(status)))
+            if status.value != 259:
+                continue
+            if k.SuspendThread(handle) == 0xffffffff:
+                check(k.GetExitCodeThread(handle, C.byref(status)))
+                if status.value != 259:
+                    continue
+                check(False)
+            suspended.append(handle)
+        yield
+    finally:
+        errors = []
+        for handle in reversed(suspended):
+            if k.ResumeThread(handle) == 0xffffffff:
+                errors.append(str(handle))
+        if errors:
+            raise OSError('Could not resume mission threads: ' + ', '.join(errors))
+
+
+def reconfigure_threads(k, threads, addresses, desired, watchpoint, desired_watchpoint, current=None):
+    for tid, handle in threads.items():
+        status = DWORD()
+        check(k.GetExitCodeThread(handle, C.byref(status)))
+        if status.value != 259:
+            continue
+        context = current[1] if current is not None and tid == current[0] else Context()
+        if current is None or context is not current[1]:
+            check(k.GetThreadContext(handle, context.address))
+        replace_configuration(context, addresses, desired, old_watchpoint=watchpoint, watchpoint=desired_watchpoint)
+        if current is None or context is not current[1]:
+            check(k.SetThreadContext(handle, context.address))
 
 
 class AddressSpace:
@@ -167,11 +215,13 @@ def debug_api():
     return k
 
 
-def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
+def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None, mission_session=None):
     if os.name != "nt":
         raise OSError("Native Windows debugger requires 64-bit Windows")
     if tls_diagnostics and ca_certificate is not None:
         raise ValueError('Choose CA registration or passive TLS diagnostics for this debugger session')
+    if mission_session is not None and (tls_diagnostics or ca_certificate is not None):
+        raise ValueError('Repeating missions require their own debugger session')
     image_base, image_path = next(modules(pid))
     if image_base != 0x140000000 or Path(image_path).name.lower() not in ("anthem.exe", "dylan.main_win64_retail.exe"):
         raise OSError("Unsupported game image/base; fixed-address patches cannot be applied safely")
@@ -193,7 +243,12 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
             hooks.validate(image_path)
             addresses, callbacks = (TLS_FAILURE_SITE,), (hooks.failure,)
         else:
-            hooks = MissionHooks(AddressSpace(memory), pid)
+            if mission_session is not None:
+                hooks = RepeatingMissionHooks(AddressSpace(memory), pid, mission_session,
+                    persona=int(os.environ.get('JOUEUR_ID', '1000')))
+                cleanup.callback(hooks.lease.close)
+            else:
+                hooks = MissionHooks(AddressSpace(memory), pid)
             addresses, watchpoint = mission_breakpoints(hooks)
             callbacks = (hooks.connect, hooks.startup, hooks.gate, hooks.playmode_write)
         if special_mode:
@@ -215,10 +270,19 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
                 event = Event()
                 if not k.WaitForDebugEvent(C.byref(event), 100):
                     if C.get_last_error() == 121:
+                        if isinstance(hooks, RepeatingMissionHooks) and hooks.has_updates():
+                            with frozen_threads(k, threads):
+                                hooks.poll()
+                                desired, desired_watchpoint = mission_breakpoints(hooks)
+                                if desired != addresses or desired_watchpoint != watchpoint:
+                                    reconfigure_threads(k, threads, addresses, desired, watchpoint, desired_watchpoint)
+                                    addresses, watchpoint = desired, desired_watchpoint
                         continue
                     check(False)
                 disposition = CONTINUE
                 try:
+                    if isinstance(hooks, RepeatingMissionHooks) and event.code != 5:
+                        hooks.poll()
                     if event.code in (2, 3):  # CREATE_THREAD / CREATE_PROCESS
                         borrowed = event.info.thread.thread if event.code == 2 else event.info.process.thread
                         # ContinueDebugEvent owns the event's original thread/process handles.
@@ -252,6 +316,8 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
                             initial_breakpoint = False
                             if special_mode:
                                 hooks.mark_ready()
+                            elif isinstance(hooks, RepeatingMissionHooks):
+                                hooks.mark_ready()
                             else:
                                 hooks.log(MISSION_DEBUGGER_READY)
                             disposition = CONTINUE
@@ -267,33 +333,46 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
                                         hooks.handle(context, event.tid)
                                         if hooks.completed: stop.set()
                                     else:
-                                        for index, callback in enumerate(callbacks):
-                                            if hits & (1 << index): callback(registers)
+                                        if special_mode:
+                                            for index, callback in enumerate(callbacks):
+                                                if hits & (1 << index): callback(registers)
+                                        else:
+                                            execution = {MISSION_CONNECT_STATE: hooks.connect, STARTUP_STATE_ENTRY: hooks.startup,
+                                                         GATE_ENTRY: hooks.gate}
+                                            if isinstance(hooks, RepeatingMissionHooks):
+                                                execution[LEAVE_SUCCESS] = hooks.leave
+                                            for index, address in enumerate(addresses):
+                                                if hits & (1 << index):
+                                                    (hooks.playmode_write if index == watchpoint else execution[address])(registers)
                                     if not special_mode:
                                         desired, desired_watchpoint = mission_breakpoints(hooks)
                                         if desired != addresses or desired_watchpoint != watchpoint:
                                             # A debug event suspends the process. Update every live
                                             # thread before resuming the mission transition.
-                                            for tid, handle in threads.items():
-                                                status = DWORD()
-                                                check(k.GetExitCodeThread(handle, C.byref(status)))
-                                                if status.value != 259: continue
-                                                other = context if tid == event.tid else Context()
-                                                if other is not context:
-                                                    check(k.GetThreadContext(handle, other.address))
-                                                replace_configuration(other, addresses, desired,
-                                                                      old_watchpoint=watchpoint,
-                                                                      watchpoint=desired_watchpoint)
-                                                if other is not context:
-                                                    check(k.SetThreadContext(handle, other.address))
+                                            reconfigure_threads(k, threads, addresses, desired, watchpoint, desired_watchpoint,
+                                                                (event.tid, context))
                                             addresses, watchpoint = desired, desired_watchpoint
                                 finally:
                                     context.resume()
                                     check(k.SetThreadContext(threads[event.tid], context.address))
+                    if not special_mode and event.code != 5:
+                        desired, desired_watchpoint = mission_breakpoints(hooks)
+                        if desired != addresses or desired_watchpoint != watchpoint:
+                            reconfigure_threads(k, threads, addresses, desired, watchpoint, desired_watchpoint)
+                            addresses, watchpoint = desired, desired_watchpoint
                 finally:
                     check(k.ContinueDebugEvent(event.pid, event.tid, disposition))
         finally:
             errors = []
+            if isinstance(hooks, RepeatingMissionHooks):
+                try:
+                    if attached and not process_exited:
+                        with frozen_threads(k, threads):
+                            hooks.close()
+                    else:
+                        hooks.close(process_exited=process_exited)
+                except OSError as error:
+                    errors.append(f'Mission cleanup: {error}')
             if attached:
                 for tid, handle in threads.items():
                     suspended = False
@@ -329,6 +408,7 @@ def main():
     parser.add_argument('pid', type=int)
     parser.add_argument('--ca-certificate', type=Path,
                         help='Experimental build-specific registration of this public PEM before a local TLS connect')
+    parser.add_argument('--mission-session', help='Run ID for repeatable solo expedition supervision')
     args = parser.parse_args()
     stop = threading.Event()
     def listen():
@@ -340,7 +420,7 @@ def main():
     threading.Thread(target=listen, daemon=True).start()
     try:
         result = run(args.pid, stop, tls_diagnostics=os.environ.get("ANTHEM_TLS_DIAGNOSTICS") == "1",
-                     ca_certificate=args.ca_certificate)
+                     ca_certificate=args.ca_certificate, mission_session=args.mission_session)
         if args.ca_certificate is not None and not result.get('loaded'):
             parser.exit(1, 'CA registration did not complete successfully; inspect data/local_ca_PID.json\n')
     except KeyboardInterrupt:

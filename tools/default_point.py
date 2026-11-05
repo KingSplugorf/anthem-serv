@@ -7,6 +7,7 @@ from process_memory import open_memory, writable_regions as process_regions
 
 import json
 import struct
+import os
 
 import numpy
 
@@ -120,8 +121,19 @@ def record_quest_points(pid, memory):
         sys.exit("composant du niveau racine introuvable")
     table = {str(quest): {"nom": name, "point": point, "chaine": point_strings[point]}
              for quest, (name, point) in quests.items() if point in point_strings}
-    with open(f"data/quest_points_{pid}.json", "w") as output:
-        json.dump({"composants": components, "quetes": table}, output, indent=1)
+    originals = []
+    for component in components:
+        memory.seek(component)
+        identity = struct.unpack('<Q', memory.read(8))[0]
+        memory.seek(component + DEFAULT_POINT)
+        pointers = struct.unpack('<QQ', memory.read(16))
+        originals.append({'component': component, 'identity': identity, 'pointers': pointers,
+                          'names': [text_at(memory, pointer) for pointer in pointers]})
+    destination = Path(f"data/quest_points_{pid}.json")
+    temporary = destination.with_suffix(f'.{os.getpid()}.tmp')
+    with temporary.open('w', encoding='utf-8') as output:
+        json.dump({"schema": 2, "composants": components, "originaux": originals, "quetes": table}, output, indent=1)
+    os.replace(temporary, destination)
     print(f"{len(components)} composants, {len(table)} quêtes sur {len(quests)} avec leur point de lancement")
 
 

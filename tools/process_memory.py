@@ -9,8 +9,21 @@ import os
 def open_memory(pid, mode="r+b"):
     if os.name == "nt":
         from windows_memory import Memory
-        return Memory(int(pid), writable="+" in mode)
-    return open(f"/proc/{int(pid)}/mem", mode, buffering=0)
+        memory = Memory(int(pid), writable="+" in mode)
+    else:
+        memory = open(f"/proc/{int(pid)}/mem", mode, buffering=0)
+    if '+' in mode and os.environ.get('ANTHEM_MISSION_LEASE'):
+        from mission_lease import Lease, GuardedMemory
+        try:
+            generation = int(os.environ['ANTHEM_MISSION_GENERATION'])
+            if generation <= 0:
+                raise ValueError('Mission generation must be positive')
+            lease = Lease(os.environ['ANTHEM_MISSION_LEASE'], os.environ['ANTHEM_MISSION_RUN_ID'])
+            return GuardedMemory(memory, lease, generation)
+        except BaseException:
+            memory.close()
+            raise
+    return memory
 
 
 def read_at(memory, address, size):

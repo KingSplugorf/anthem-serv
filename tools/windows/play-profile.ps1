@@ -14,28 +14,30 @@ if ([string]::IsNullOrWhiteSpace($PilotName) -or $PilotName -match '[\x00-\x1f\x
 }
 
 # Keep using the launcher for certificate handling, hosts, patches and cleanup.
-# Rebuild BIGS: an older executable cannot load the new saved-pilot mode.
+# Rebuild the services: Blaze and the native lifecycle hooks must agree.
 Push-Location $repoRoot
 $previous = @{}
 try {
-    & cargo.exe '+1.90.0' build --locked -p bigs --bin bigs
-    if ($LASTEXITCODE -ne 0) { throw 'BIGS build failed; the game was not started.' }
+    & cargo.exe '+1.90.0' build --locked --workspace --bins
+    if ($LASTEXITCODE -ne 0) { throw 'Service build failed; the game was not started.' }
 
-    $built = Join-Path $repoRoot 'target\debug\bigs.exe'
+    $built = Join-Path $repoRoot 'target\debug\blaze.exe'
     if (-not (Test-Path -LiteralPath $built)) { throw "Build output not found: $built" }
     # The launcher prefers a complete bin/ or release/ set over debug/. Preserve
-    # its old BIGS executable before installing this build in the selected set.
+    # all three old executables before installing this build in the selected set.
     foreach ($directory in @('bin', 'target\release')) {
         $complete = $true
         foreach ($service in @('redirector', 'blaze', 'bigs')) {
             if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "$directory\$service.exe"))) { $complete = $false }
         }
         if ($complete) {
-            $destination = Join-Path $repoRoot "$directory\bigs.exe"
-            $backup = "$destination.before-profile-$([Guid]::NewGuid().ToString('N'))"
-            Copy-Item -LiteralPath $destination -Destination $backup
-            Copy-Item -LiteralPath $built -Destination $destination -Force
-            Write-Host "Previous BIGS preserved at $backup"
+            foreach ($service in @('redirector', 'blaze', 'bigs')) {
+                $destination = Join-Path $repoRoot "$directory\$service.exe"
+                $backup = "$destination.before-profile-$([Guid]::NewGuid().ToString('N'))"
+                Copy-Item -LiteralPath $destination -Destination $backup
+                Copy-Item -LiteralPath (Join-Path $repoRoot "target\debug\$service.exe") -Destination $destination -Force
+                Write-Host "Previous $service preserved at $backup"
+            }
             break
         }
     }

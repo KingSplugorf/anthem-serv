@@ -1,4 +1,16 @@
-"""Usage : python3 -I tools/auto_patches.py PID : applique seul, au bon moment, les correctifs qui font jouer les missions sur le serveur interne du jeu : redirection du lancement d'une mission et créateur serveur de l'entité de navigation (ai/navigation.py, dès que le code est en mémoire, avant le premier hub : sans entité NavPower serveur, les conversations scénarisées du hub s'arrêtent aussitôt), départ d'expédition sans expédition serveur (end_expedition.py : « End Freeplay / End Expedition » répond Success et transfère au point VictoryPose_InProc), points de mission en serveur interne (dès que le niveau racine est chargé, au menu de démarrage), relevé du point de lancement de chaque quête (default_point.py --quetes, data/quest_points_PID.json), puis, dès que GameStartingInfo existe, pose de tools/gdb_active_mission.gdb qui, au lancement d'une mission depuis le hub ou du prologue depuis le menu de démarrage, démarre le serveur interne sur le niveau racine au point de lancement de la quête et passe GameStartingInfo en mode Mission avec la quête demandée (le message GameStarted du serveur dédié manque) ; au premier démarrage de mission de ce jeu (état 8 dans data/active_mission_PID.txt, relu toutes les 0,2 s), détache gdb_mission_active (un seul lancement de mission par démarrage du jeu) et pose aussitôt, en trois files parallèles, créations, mort, comportements d’arme serveur et SetHealth serveur publié et vie en points (published_health.py), puis ApplyDamage natif (damage.py) et réactions aux dégâts répliqués côté client (reactions.py : animation de mort des ennemis) (après leur vérification en mémoire), les rappels serveur (impacts, vie, sections, refusés tant que le serveur ne les a pas enregistrés) et les correctifs d'IA (target.py et shots.py sans player, déplacements, perception), pendant qu'une seule lecture de la mémoire cherche le personnage serveur du player et ses copies clientes (player.py) ; écrit ensuite le player et lance le suivi de la position du player (ai/player_position.py, qui le cherche à nouveau s'il manque) et celui des boucliers ennemis et des objets destructibles (health/health_follow.py, data/logs/health_follow.log) ; ce qui échoue (serveur ou player pas encore prêts) est retenté toutes les 2 s pendant 10 min ; data/combat_patches.txt, s'il existe, restreint cette liste (un nom de script de tools/combat_patches/ par ligne, « suivi » pour le suivi de la vie, « sonde_sortie » pour remplacer gdb_mission_active par tools/gdb_exit.gdb) ; MISSION_PAIR=1 pose la redirection pair (launch_from_hub.py --pair, docs/etude-multijoueur/transport.md), identique sur l'hôte et sur le jeu qui rejoint : seul l'hôte de topologie de la partie Blaze démarre son serveur interne, donc gdb_mission_active et les correctifs de mission n'agissent que sur lui ; le hub partagé (HUB_PARTAGE, docs/etude-multijoueur/social.md) n'ajoute rien ici : le hub démarre en solo, et c'est l'ouverture par Blaze (tools/hub_partage.sh) qui le recharge en hôte pair par la redirection pair"""
+"""Usage: python3 -I tools/auto_patches.py PID.
+
+Prepare the supported game's mission hooks and combat patches. Native Windows
+keeps its debugger attached across expeditions: each accepted Blaze request gets
+fresh startup state, a scoped worker tree, and a write lease revoked on exit,
+cancellation or timeout. Return restores the hub launch point and refreshes the
+next mission's metadata. ANTHEM_MISSION_LIFECYCLE=0 selects the previous one-shot
+Windows behavior. Linux/GDB and peer-host paths retain their existing flow.
+
+data/combat_patches.txt optionally restricts combat patches (one relative script
+per line; suivi enables health/position followers). Internal --mission-worker
+and --prepare-mission children must receive their supervisor's stdin start gate.
+"""
 
 import sys
 from pathlib import Path
@@ -13,6 +25,7 @@ import subprocess
 import time
 import threading
 import uuid
+import argparse
 from concurrent.futures import ThreadPoolExecutor
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
@@ -198,10 +211,13 @@ def combat_choice():
     return selected
 
 
-def apply_in_order(pid, patches):
+def apply_in_order(pid, patches, cancelled=lambda: False, children=None):
     for index, (script, arguments) in enumerate(patches):
-        result = subprocess.run([sys.executable, "-X", "utf8", "-I", os.path.join(COMBAT, script), pid, "poser", *arguments],
-                                capture_output=True, text=True, encoding="utf-8")
+        if cancelled():
+            return ()
+        command = [sys.executable, "-X", "utf8", "-I", os.path.join(COMBAT, script), pid, "poser", *arguments]
+        result = (children.run(command, text=True, encoding='utf-8') if children is not None else
+                  subprocess.run(command, capture_output=True, text=True, encoding="utf-8"))
         last_line = ((result.stdout + result.stderr).strip().splitlines() or [""])[-1]
         print(f"{time.strftime('%H:%M:%S')} {script} : {last_line}", flush=True)
         if result.returncode:
@@ -209,17 +225,18 @@ def apply_in_order(pid, patches):
     return ()
 
 
-def follow(pid, chosen):
+def follow(pid, chosen, children=None):
+    spawn = children.start if children is not None else subprocess.Popen
     if "ai/player_position.py" in chosen or HEALTH_FOLLOW in chosen:
         with open(os.path.join("data", "logs", "player_position.log"), "a") as log:
-            subprocess.Popen([sys.executable, "-X", "utf8", "-I", os.path.join(COMBAT, "ai", "player_position.py"), pid, "--duree", str(HEALTH_FOLLOW_SECONDS)],
-                             stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            spawn([sys.executable, "-X", "utf8", "-I", os.path.join(COMBAT, "ai", "player_position.py"), pid, "--duree", str(HEALTH_FOLLOW_SECONDS)],
+                             stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=children is None)
         print(f"{time.strftime('%H:%M:%S')} player_position.py : lancé", flush=True)
     if HEALTH_FOLLOW not in chosen:
         return
     with open(os.path.join("data", "logs", "health_follow.log"), "a") as log:
-        subprocess.Popen([sys.executable, "-X", "utf8", "-I", os.path.join(COMBAT, "health", "health_follow.py"), pid, "--duree", str(HEALTH_FOLLOW_SECONDS)],
-                         stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        spawn([sys.executable, "-X", "utf8", "-I", os.path.join(COMBAT, "health", "health_follow.py"), pid, "--duree", str(HEALTH_FOLLOW_SECONDS)],
+                         stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=children is None)
     print(f"{time.strftime('%H:%M:%S')} health_follow.py : lancé", flush=True)
 
 
@@ -232,26 +249,100 @@ def find_player(process):
           f"{'' if character else ' (laissé à player_position.py)'}", flush=True)
 
 
-def apply_mission_patches(pid, chosen):
+def apply_mission_patches(pid, chosen, cancelled=lambda: False, children=None):
+    if not chosen or cancelled():
+        return True
     process = Process(int(pid))
     groups = [tuple(patch for patch in group if patch[0] in chosen) for group in MISSION_GROUPS]
     player_pending = True
     deadline = time.monotonic() + MISSION_RETRY_LIMIT
-    with ThreadPoolExecutor(len(groups) + 1) as pool:
-        while alive(pid):
-            search = pool.submit(find_player, process) if player_pending else None
-            groups = list(pool.map(lambda group: apply_in_order(pid, group), groups))
-            if search:
-                search.result()
-                player_pending = False
-                follow(pid, chosen)
-            if not any(groups):
-                print(f"{time.strftime('%H:%M:%S')} correctifs de mission posés", flush=True)
+    try:
+        with ThreadPoolExecutor(len(groups) + 1) as pool:
+            while alive(pid) and not cancelled():
+                search = pool.submit(find_player, process) if player_pending else None
+                groups = list(pool.map(lambda group: apply_in_order(pid, group, cancelled, children), groups))
+                if search:
+                    search.result()
+                    player_pending = False
+                    if not cancelled():
+                        follow(pid, chosen, children)
+                if cancelled():
+                    return False
+                if not any(groups):
+                    print(f"{time.strftime('%H:%M:%S')} correctifs de mission posés", flush=True)
+                    return True
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Mission patches did not finish before the retry deadline")
+                for _ in range(20):
+                    if cancelled():
+                        return False
+                    time.sleep(MISSION_RETRY_SECONDS / 20)
+    finally:
+        process.memory.close()
+
+
+def child_stop_event():
+    stop = threading.Event()
+    def listen():
+        for line in sys.stdin:
+            if line.strip() == 'stop':
+                break
+        stop.set()
+    threading.Thread(target=listen, daemon=True).start()
+    return stop
+
+
+def mission_worker(pid, run_id, generation):
+    from mission_lease import Lease, MissionInactive
+    from mission_workers import Children
+    stop = child_stop_event()
+    with Lease(os.environ['ANTHEM_MISSION_LEASE'], run_id) as lease:
+        cancelled = lambda: stop.is_set() or not lease.active(generation)
+        with Children(cancelled) as children:
+            try:
+                if apply_mission_patches(pid, combat_choice(), cancelled, children):
+                    while alive(pid) and not cancelled():
+                        stop.wait(0.1)
+            except (MissionInactive, InterruptedError):
+                if not cancelled():
+                    raise
+
+
+def prepare_mission(pid):
+    from mission_workers import Children
+    stop = child_stop_event()
+    with Children(stop.is_set) as children:
+        for script, arguments in [('missions_inproc.py', ()), ('default_point.py', ('--quetes',))]:
+            while alive(pid) and not stop.is_set():
+                command = [sys.executable, '-X', 'utf8', '-I', os.path.join(TOOLS, script), pid, *arguments]
+                result = children.run(command, text=True, encoding='utf-8')
+                print((result.stdout + result.stderr).strip(), flush=True)
+                if (mission_points_found(result.stdout) if script == 'missions_inproc.py' else result.returncode == 0):
+                    break
+                stop.wait(DATA_RETRY_SECONDS)
+            else:
                 return
-            if time.monotonic() >= deadline:
-                print(f"{time.strftime('%H:%M:%S')} abandon après {MISSION_RETRY_LIMIT} s : {', '.join(script for group in groups for script, _ in group)}", flush=True)
-                raise RuntimeError("Mission patches did not finish before the retry deadline")
-            time.sleep(MISSION_RETRY_SECONDS)
+
+
+def supervise_missions(pid, run_id, debugger):
+    from mission_jobs import managed_spawn
+    from mission_supervisor import Supervisor
+    def launch(generation, lease=None):
+        name = 'mission' if lease is not None else 'mission_prepare'
+        env = dict(os.environ)
+        command = [sys.executable, '-X', 'utf8', '-I', os.path.join(TOOLS, 'auto_patches.py'), pid]
+        if lease is not None:
+            env.update(ANTHEM_MISSION_LEASE=str(lease.resolve()), ANTHEM_MISSION_RUN_ID=run_id,
+                       ANTHEM_MISSION_GENERATION=str(generation))
+            command += ['--mission-worker', str(generation), '--mission-session', run_id]
+        else:
+            command += ['--prepare-mission']
+        path = os.path.join('data', 'logs', f'{name}_{pid}_{run_id[:8]}_{generation}.log')
+        with open(path, 'w', encoding='utf-8') as output:
+            return managed_spawn(command, env=env, stdout=output, stderr=subprocess.STDOUT)
+    Supervisor(pid, run_id, debugger, launch, lambda generation: launch(generation), alive,
+               announce=lambda text: print(f"{time.strftime('%H:%M:%S')} {text}", flush=True),
+               status_callback=lambda state: print('MISSION_STATUS = ' + json.dumps(state), flush=True)).run()
 
 
 def launch_steps(environment):
@@ -265,8 +356,27 @@ def step_done(pid, step):
 
 
 def main():
-    pid = sys.argv[1]
+    parser = argparse.ArgumentParser(description='Game patch startup and native expedition supervision')
+    parser.add_argument('pid')
+    parser.add_argument('--mission-worker', type=int)
+    parser.add_argument('--mission-session')
+    parser.add_argument('--prepare-mission', action='store_true')
+    args = parser.parse_args()
+    pid = args.pid
+    if args.mission_worker is not None or args.prepare_mission:
+        if sys.stdin.readline().strip() != 'start':
+            raise RuntimeError('Managed mission child did not receive its start gate')
+        if args.prepare_mission:
+            prepare_mission(pid)
+        else:
+            mission_worker(pid, args.mission_session, args.mission_worker)
+        return
     os.makedirs(os.path.join("data", "logs"), exist_ok=True)
+    lifecycle = os.name == 'nt' and os.environ.get('ANTHEM_MISSION_LIFECYCLE', '1') == '1' and os.environ.get('ANTHEM_TLS_DIAGNOSTICS') != '1'
+    if lifecycle:
+        with open(os.path.join('data', 'logs', 'blaze.log'), encoding='utf-8', errors='replace') as source:
+            if 'BLAZE_LOCAL_LIFECYCLE_READY = 1' not in source.read(65536):
+                raise RuntimeError('Blaze lacks local mission lifecycle support. Rebuild the services or set ANTHEM_MISSION_LIFECYCLE=0 for the previous single-expedition mode.')
     if os.name == "nt":
         # Reject unknown image relocation before any fixed-address patch is attempted.
         from windows_memory import modules
@@ -286,7 +396,7 @@ def main():
         retry = DATA_RETRY_SECONDS if step[0] in ("missions_inproc.py", "default_point.py") else CODE_RETRY_SECONDS
         if not until(pid, retry, lambda: step_done(pid, step)):
             return
-    if not until(pid, CODE_RETRY_SECONDS, lambda: starting_info_ready(pid)):
+    if not lifecycle and not until(pid, CODE_RETRY_SECONDS, lambda: starting_info_ready(pid)):
         return
     mission_log_start = os.path.getsize(mission_log(pid)) if os.path.exists(mission_log(pid)) else 0
     native = os.name == "nt"
@@ -295,6 +405,9 @@ def main():
                 if native else ["gdb", "-p", pid, "-batch", "-x", os.path.join(TOOLS, "gdb_active_mission.gdb")])
     run_id = uuid.uuid4().hex if tls_diagnostics else None
     debugger_env = {**os.environ, "ANTHEM_TLS_RUN_ID": run_id} if tls_diagnostics else None
+    mission_run_id = uuid.uuid4().hex if lifecycle else None
+    if lifecycle:
+        debugger += ['--mission-session', mission_run_id]
     with open(os.path.join("data", "logs", "gdb_active_mission.log"), "a") as log:
         mission_debugger = subprocess.Popen(debugger, stdin=subprocess.PIPE if native else subprocess.DEVNULL,
                                             stdout=log, stderr=subprocess.STDOUT, start_new_session=True, env=debugger_env)
@@ -309,6 +422,9 @@ def main():
     if native and not wait_for_mission_debugger(pid, mission_log_start, mission_debugger):
         return
     print(f"{time.strftime('%H:%M:%S')} {'Win32' if native else 'GDB'} mission debugger : posé", flush=True)
+    if lifecycle:
+        supervise_missions(pid, mission_run_id, mission_debugger)
+        return
     if wait_for_mission_start(pid, mission_log_start, mission_debugger):
         if mission_debugger.poll() is None:
             if native:

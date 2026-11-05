@@ -5,6 +5,7 @@ const path = require("node:path");
 const { IPV4, REDIRECTOR, redirectorAddress } = require("./hosts");
 const windows = require("./windows_runtime");
 const { localProfile, initialProfile, listProfiles, newCreatorProfile } = require("./windows_profiles");
+const { missionStatusStream } = require("./mission_status");
 
 if (!app.requestSingleInstanceLock()) {
   console.error("Anthem Launcher is already running. Close it before selecting a different profile.");
@@ -24,6 +25,7 @@ let starting = false;
 let closing = false;
 let stopping;
 let generation = 0;
+let expedition = null;
 const owned = new Set();
 const settingsPath = () => path.join(app.getPath("userData"), "windows.json");
 function send(channel, value) {
@@ -35,6 +37,7 @@ const log = (message) => send("journal", message);
 const status = () => send("etat", {
   localServer: services.length > 0, localServerReady: services.length === 3 && !starting,
   patches: Boolean(patches) || starting, game: Boolean(game), second: false, ready: Boolean(game),
+  expedition,
 });
 
 app.on("second-instance", () => {
@@ -101,6 +104,7 @@ function stopSession() {
     await stop(game);
     await Promise.all([...owned].map(stop));
     game = patches = null;
+    expedition = null;
     services = [];
     status();
   })().finally(() => { stopping = null; });
@@ -162,7 +166,10 @@ async function play(_event, { mode, ip, profileKey }) {
       // Match tools/start.sh: a distinct dedicated identity makes the game take
       // ClientJoinMultiplayer, where launch_from_hub redirects it to InProc.
       const env = { ...profile.env, LISTEN_HOST: "127.0.0.1", BLAZE_HOST: REDIRECTOR, BLAZE_IP: address,
-        BLAZE_SERVEUR_MISSION_ID: process.env.BLAZE_SERVEUR_MISSION_ID ?? "2000000", BIGS_URL: `http://${address}:8080` };
+        BLAZE_SERVEUR_MISSION_ID: process.env.BLAZE_SERVEUR_MISSION_ID ?? "2000000",
+        BLAZE_LOCAL_LIFECYCLE: process.env.ANTHEM_MISSION_LIFECYCLE === "0" ? "0" : "1",
+        BLAZE_MISSION_PAIR: process.env.ANTHEM_MISSION_LIFECYCLE === "0" ? process.env.BLAZE_MISSION_PAIR || "0" : "0",
+        BIGS_URL: `http://${address}:8080` };
       for (const executable of binaries) {
         ensureActive();
         const name = path.basename(executable, ".exe");
@@ -206,7 +213,11 @@ async function play(_event, { mode, ip, profileKey }) {
       log("Connection test: game started without external memory patches or debugger. Mission launching is not prepared in this mode.");
       return;
     }
-    patches = start(python.command, [...python.prefix, "-X", "utf8", "-I", path.join(ROOT, "tools", "auto_patches.py"), String(gamePid)]);
+    const patchOptions = process.env.ANTHEM_MISSION_LIFECYCLE === "0" ? {} : { env: { ...process.env, MISSION_PAIR: "0" } };
+    patches = start(python.command, [...python.prefix, "-X", "utf8", "-I", path.join(ROOT, "tools", "auto_patches.py"), String(gamePid)], patchOptions);
+    patches.stdout?.on("data", missionStatusStream((value) => {
+      if (game && currentGeneration === generation && !stopping) { expedition = value; status(); }
+    }));
     await launched(patches);
     patches.once("exit", (code) => {
       patches = null;

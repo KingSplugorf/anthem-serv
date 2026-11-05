@@ -90,6 +90,7 @@ async function launcherHarness({ deferReadiness = false, taskkillThrows = false,
     electron: { app, BrowserWindow, dialog: {}, ipcMain: { handle: (name, callback) => ipc.set(name, callback) } },
     "node:child_process": { spawn, execFile }, "node:fs": fileSystem, "node:path": path,
     "./hosts": require("./hosts"), "./windows_runtime": runtime,
+    "./mission_status": require("./mission_status"),
     "./windows_profiles": {
       initialProfile: (config, inherited) => inherited.ANTHEM_PROFILE === "fresh" ? `fresh-${inherited.ANTHEM_PROFILE_ID || "pilot-1"}` : config.profileKey || "development",
       listProfiles: () => [{ key: "development", label: "Original save — Level 30" }],
@@ -165,6 +166,8 @@ test("Windows launcher starts native services, the game and Python patches, then
     assert.equal(service.options.env.BLAZE_HOST, "spring18.gosredirector.ea.com");
     assert.equal(service.options.env.BLAZE_IP, "127.0.0.1");
     assert.equal(service.options.env.BLAZE_SERVEUR_MISSION_ID, "2000000");
+    assert.equal(service.options.env.BLAZE_LOCAL_LIFECYCLE, "1");
+    assert.equal(service.options.env.BLAZE_MISSION_PAIR, "0");
   }
   await harness.ipc.get("arreter")();
   assert.equal(harness.killed[0], game.child.pid);
@@ -179,6 +182,15 @@ test("explicit mission-server identity overrides retain the Linux startup semant
     assert.equal(harness.spawned.find((item) => item.command === "blaze.exe").options.env.BLAZE_SERVEUR_MISSION_ID, value);
     await harness.ipc.get("arreter")();
   }
+});
+
+test("legacy mission switch disables lifecycle on the services and preserves explicit peer configuration", async () => {
+  const harness = await launcherHarness({ env: { ANTHEM_MISSION_LIFECYCLE: "0", BLAZE_MISSION_PAIR: "1" } });
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  const blaze = harness.spawned.find((item) => item.command === "blaze.exe");
+  assert.equal(blaze.options.env.BLAZE_LOCAL_LIFECYCLE, "0");
+  assert.equal(blaze.options.env.BLAZE_MISSION_PAIR, "1");
+  await harness.ipc.get("arreter")();
 });
 
 test("cancelling Windows startup during readiness prevents game launch", async () => {

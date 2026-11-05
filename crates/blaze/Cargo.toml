@@ -6,5 +6,6 @@ version.workspace = true
 [dependencies]
 fire2 = { path = "../fire2" }
 tdf = { path = "../tdf" }
+serde_json = "1"
 tls = { path = "../tls" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "fs", "time", "sync"] }

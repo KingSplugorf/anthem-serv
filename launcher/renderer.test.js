@@ -70,3 +70,19 @@ test("Linux launcher keeps its existing flow with the Windows profile selector h
   h.elements.jouer.listeners.get("click")();
   assert.equal(h.played[0][2], undefined);
 });
+
+test("lifecycle stream shows return preparation, readiness, and a subsequent expedition", async () => {
+  const h = await harness();
+  const { missionStatusStream } = require("./mission_status");
+  const decode = missionStatusStream((expedition) => h.onState({ game: true, patches: true, expedition }));
+  const send = (phase, generation, ready) => decode("MISSION_STATUS = " + JSON.stringify({
+    schema: 1, run_id: "1234567890abcdef1234567890abcdef", phase, generation, ready_for_launch: ready,
+  }) + "\n");
+  send("returning", 1, false);
+  assert.match(h.elements.etat.textContent, /preparing next launch/);
+  send("returning", 1, true);
+  assert.match(h.elements.etat.textContent, /Ready for another expedition/);
+  send("active", 2, false);
+  assert.match(h.elements.etat.textContent, /Expedition 2 running/);
+  assert.equal(h.elements.profil.disabled, true);
+});
