@@ -31,6 +31,17 @@ CA_MARKERS = (
     b'ignoring redundant add of CA cert', b'failed to allocate memory for cert',
 )
 CA_FUNCTION_LIMIT = 24
+CA_CALLER_DEPTH = 4
+CA_BUNDLE_RANGE_LIMIT = 8192
+# Fixed, file-backed neighborhoods containing the observed PEM parser, TLS
+# constructor and global initializer, plus their original entry stubs. These
+# are static executable bytes, never process memory or TLS session buffers.
+CA_CODE_REGIONS = (
+    ('original TLS entry region', 0x140820000, 0x80000),
+    ('relocated TLS code region', 0x147D60000, 0x80000),
+)
+PEM_TABLE_ADDRESS, PEM_TABLE_SIZE = 0x143732520, 0x78
+INDIRECT_FLOW = re.compile(rb'\xff[\x15\x25](.{4})', re.DOTALL)
 
 
 def pe_layout(data):
@@ -174,12 +185,66 @@ def caller_references(data, sections, targets):
     return result, counts
 
 
+def direct_jump_target(data, sections, rva):
+    raw = rva_to_raw(sections, rva, 5)
+    if raw is None or data[raw] != 0xe9: return None
+    target = rva+5+struct.unpack_from('<i', data, raw+1)[0]
+    if any(s.get('executable', False) and s['rva'] <= target < s['rva']+s['raw_size']
+           for s in sections):
+        return target
+    return None
+
+
+def ca_code_bundle(data, sections, functions):
+    regions, slots, ranges = [], set(), []
+    for label, address, size in CA_CODE_REGIONS:
+        rva = address-IMAGE_BASE
+        raw = rva_to_raw(sections, rva, size)
+        section = next((s for s in sections if s['rva'] <= rva and
+                        rva+size <= s['rva']+s['raw_size']), None)
+        if raw is None or section is None or not section.get('executable', False):
+            raise ValueError(f'Expected file-backed executable region missing at {address:#x}')
+        content = data[raw:raw+size]
+        regions.append(dict(label=label, address=hex(address), file_offset=hex(raw),
+                            size=size, sha256=hashlib.sha256(content).hexdigest(),
+                            bytes=content.hex()))
+        ranges.extend((start, end) for start, end in functions if start < rva+size and end > rva)
+        cursor = raw
+        while (match := INDIRECT_FLOW.search(data, cursor, raw+size)) is not None:
+            instruction = rva+match.start()-raw
+            slot = instruction+6+struct.unpack('<i', match.group(1))[0]
+            if rva_to_raw(sections, slot, 8) is not None:
+                slots.add(slot)
+            cursor = match.start()+1
+    table_raw = rva_to_raw(sections, PEM_TABLE_ADDRESS-IMAGE_BASE, PEM_TABLE_SIZE)
+    if table_raw is None:
+        raise ValueError('Expected file-backed PEM marker table missing')
+    # A slot contains a static import/pointer value, not a resolved runtime API.
+    pointer_slots = []
+    for slot in sorted(slots)[:512]:
+        raw = rva_to_raw(sections, slot, 8)
+        pointer_slots.append(dict(address=hex(IMAGE_BASE+slot),
+                                  file_value=hex(struct.unpack_from('<Q', data, raw)[0])))
+    unique_ranges = sorted(set(ranges))
+    return dict(regions=regions, total_code_bytes=sum(r['size'] for r in regions),
+                function_ranges=[dict(start=hex(IMAGE_BASE+start), end=hex(IMAGE_BASE+end))
+                                 for start, end in unique_ranges[:CA_BUNDLE_RANGE_LIMIT]],
+                function_ranges_limited=len(unique_ranges)>CA_BUNDLE_RANGE_LIMIT,
+                pem_table=dict(address=hex(PEM_TABLE_ADDRESS),
+                               bytes=data[table_raw:table_raw+PEM_TABLE_SIZE].hex()),
+                indirect_pointer_slots=pointer_slots, pointer_slots_limited=len(slots)>512,
+                warning='Bounded static file excerpts only. Import slots may be unresolved; runtime use and callable API addresses are unverified.')
+
+
 def ca_loader_report(data, sections, functions):
-    """Follow marker -> pointer table -> code -> two levels of callers."""
+    """Follow marker -> pointer table -> code -> callers, including jump stubs."""
     starts = [entry[0] for entry in functions]
     targets, markers = {}, []
     for marker in CA_MARKERS:
-        offsets, count = occurrences(data, marker+b'\0', 4)
+        # Embedded PEM certificates have a newline after BEGIN, while parser
+        # delimiter literals end in NUL. Both can reveal CA-loading callers.
+        needle = marker if marker.startswith(b'-----') else marker+b'\0'
+        offsets, count = occurrences(data, needle, 8)
         entry = dict(text=marker.decode('ascii'), occurrences=count, locations=[])
         for offset in offsets:
             try:
@@ -215,7 +280,8 @@ def ca_loader_report(data, sections, functions):
         candidate = context(data, sections, functions, starts, rva)
         first = candidate.get('function_start')
         # A nearby x64 unwind function range supplies boundaries, not identity.
-        # Without it, retain an excerpt but do not treat the site as an entry.
+        # A direct jump stub can have no unwind record; retain it in the graph
+        # so callers of the original entry can still be found.
         index = bisect_right(starts, rva)-1
         bounded = index >= 0 and functions[index][0] <= rva < functions[index][1]
         key = first if bounded else candidate['address']
@@ -224,9 +290,15 @@ def ca_loader_report(data, sections, functions):
             truncated = True
             return None
         exported.add(key)
-        code.append(dict(reason=reason, caller_depth=depth, unwind_range_found=bounded,
-                         code=candidate))
-        return int(first, 16)-IMAGE_BASE if bounded else None
+        record = dict(reason=reason, caller_depth=depth, unwind_range_found=bounded,
+                      code=candidate)
+        code.append(record)
+        if bounded: return int(first, 16)-IMAGE_BASE
+        target = direct_jump_target(data, sections, rva)
+        if target is not None:
+            record['direct_jump_target'] = hex(IMAGE_BASE+target)
+            return rva
+        return None
 
     frontier = set()
     sites = []
@@ -239,7 +311,7 @@ def ca_loader_report(data, sections, functions):
             first = add(rva, f'RIP-relative reference to {hex(address)}', 0)
             if first is not None: frontier.add(first)
     edges, walked = [], set()
-    for depth in (1, 2):
+    for depth in range(1, CA_CALLER_DEPTH+1):
         frontier -= walked
         if not frontier: break
         walked.update(frontier)
@@ -254,12 +326,13 @@ def ca_loader_report(data, sections, functions):
                 if first is not None: next_frontier.add(first)
         frontier = next_frontier
     return dict(markers=markers, reference_sites=sites, caller_edges=edges,
+                caller_depth_limit=CA_CALLER_DEPTH,
                 candidate_functions=code, function_limit=CA_FUNCTION_LIMIT,
                 function_limit_reached=truncated,
                 warning='Static byte-pattern candidates may overlap data or instruction operands. Function identities, calling conventions and runtime use are unverified. Do not invoke these addresses.')
 
 
-def inspect_ca(executable):
+def inspect_ca(executable, *, include_code_bundle=False):
     with open(executable, 'rb') as source:
         digest = hashlib.file_digest(source, 'sha256').hexdigest()
         if digest != SUPPORTED_SHA256:
@@ -267,8 +340,11 @@ def inspect_ca(executable):
         with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as data:
             sections, exception_rva, exception_size = pe_layout(data)
             functions = function_ranges(data, sections, exception_rva, exception_size)
-            return dict(file=Path(executable).name, sha256=digest,
-                        ca_loader=ca_loader_report(data, sections, functions))
+            report = dict(format_version=2, file=Path(executable).name, sha256=digest,
+                          ca_loader=ca_loader_report(data, sections, functions))
+            if include_code_bundle:
+                report['code_bundle'] = ca_code_bundle(data, sections, functions)
+            return report
 
 
 def inspect(executable, layout):
@@ -310,19 +386,24 @@ def main():
     parser.add_argument('--output',type=Path,default=Path('Anthem-tls-code.json'))
     parser.add_argument('--ca-loader', action='store_true',
                         help='Follow CA marker pointer tables and callers; does not require --layout')
+    parser.add_argument('--ca-code-bundle', action='store_true',
+                        help='Include 1 MiB of fixed TLS code excerpts and metadata; implies --ca-loader')
     args=parser.parse_args()
-    print('Reading CA marker tables and caller candidates (read-only)...' if args.ca_loader else
+    ca_mode = args.ca_loader or args.ca_code_bundle
+    print('Reading CA marker tables and caller candidates (read-only)...' if ca_mode else
           'Reading TLS code references without executing or changing the game...',flush=True)
     try:
-        result=(inspect_ca(args.executable) if args.ca_loader else
-                inspect(args.executable,json.loads(args.layout.read_text(encoding='utf-8-sig'))))
         if args.output.resolve() == args.executable.resolve() or args.output.resolve() == args.layout.resolve():
             raise ValueError('Output must differ from the executable and input layout report')
+        result=(inspect_ca(args.executable, include_code_bundle=args.ca_code_bundle) if ca_mode else
+                inspect(args.executable,json.loads(args.layout.read_text(encoding='utf-8-sig'))))
         args.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     except (OSError,ValueError,KeyError,struct.error) as error:
         parser.exit(1,f'Inspection failed: {error}\n')
-    if args.ca_loader:
+    if ca_mode:
         print(f"{args.output}: {len(result['ca_loader']['candidate_functions'])} static function candidates; no game files changed")
+        if args.ca_code_bundle:
+            print(f"Included {result['code_bundle']['total_code_bytes']} static TLS code bytes; keep this report for analysis")
     else:
         print(f"{args.output}: {sum(s['reference_count'] for s in result['string_references'])} string references; {len(result['candidate_boolean_wrappers'])} wrapper candidates")
 

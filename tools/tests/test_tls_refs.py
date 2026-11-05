@@ -10,7 +10,8 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from windows import inspect_tls_refs as inspector
 from windows.inspect_tls_refs import (IMAGE_BASE, ca_loader_report, caller_references,
-                                     context, inspect, inspect_ca, lea_references, wrapper_pairs)
+                                     ca_code_bundle, context, inspect, inspect_ca,
+                                     lea_references, wrapper_pairs)
 
 
 class TlsReferenceTests(unittest.TestCase):
@@ -80,6 +81,62 @@ class TlsReferenceTests(unittest.TestCase):
         references,counts=caller_references(data,[self.section()],{0x1200})
         self.assertEqual(counts[0x1200],1)
         self.assertEqual(references[0x1200],[(0x1022,'call')])
+
+    def test_ca_walk_follows_callers_through_jump_stub_without_unwind_record(self):
+        data=bytearray(0x1000)
+        sections=[dict(rva=0x1000,raw_offset=0x200,raw_size=0x600,executable=True),
+                  dict(rva=0x2000,raw_offset=0x800,raw_size=0x800,executable=False)]
+        marker=b'-----BEGIN CERTIFICATE-----\0'
+        data[0x900:0x900+len(marker)]=marker
+        data[0x240:0x247]=b'\x48\x8d\x0d'+struct.pack('<i',0x2100-(0x1040+7))
+        data[0x300:0x305]=b'\xe9'+struct.pack('<i',0x1040-(0x1100+5))
+        data[0x404:0x409]=b'\xe8'+struct.pack('<i',0x1100-(0x1204+5))
+        data[0x444:0x449]=b'\xe9'+struct.pack('<i',0x1200-(0x1244+5))
+        report=ca_loader_report(data,sections,[(0x1040,0x1050),(0x1200,0x1210),(0x1240,0x1250)])
+        candidates=report['candidate_functions']
+        self.assertEqual([c['caller_depth'] for c in candidates],[0,1,2,3])
+        self.assertFalse(candidates[1]['unwind_range_found'])
+        self.assertEqual(candidates[1]['direct_jump_target'],hex(IMAGE_BASE+0x1040))
+        self.assertEqual(candidates[2]['code']['function_start'],hex(IMAGE_BASE+0x1200))
+
+    def test_ca_search_also_finds_embedded_pem_with_newline_after_header(self):
+        data=bytearray(0x800)
+        pem=b'-----BEGIN CERTIFICATE-----\nBASE64\n-----END CERTIFICATE-----\0'
+        data[0x500:0x500+len(pem)]=pem
+        data[0x220:0x227]=b'\x48\x8d\x0d'+struct.pack('<i',0x1300-(0x1020+7))
+        report=ca_loader_report(data,[self.section()],[(0x1020,0x1030)])
+        self.assertEqual(report['markers'][0]['occurrences'],1)
+        self.assertEqual(report['reference_sites'][0]['target'],hex(IMAGE_BASE+0x1300))
+        self.assertEqual(report['candidate_functions'][0]['code']['function_start'],hex(IMAGE_BASE+0x1020))
+
+    def test_code_bundle_exports_file_ranges_unwind_metadata_and_indirect_slots(self):
+        data=bytearray(0x900)
+        sections=[dict(rva=0x1000,raw_offset=0x200,raw_size=0x100,executable=True),
+                  dict(rva=0x2000,raw_offset=0x500,raw_size=0x100,executable=True),
+                  dict(rva=0x3000,raw_offset=0x800,raw_size=0x100,executable=False)]
+        data[0x520:0x526]=b'\xff\x15'+struct.pack('<i',0x3000-(0x2020+6))
+        struct.pack_into('<Q',data,0x800,IMAGE_BASE+0x1000)
+        regions=(('original',IMAGE_BASE+0x1000,0x100),('relocated',IMAGE_BASE+0x2000,0x100))
+        original=bytes(data)
+        with patch.object(inspector,'CA_CODE_REGIONS',regions), \
+             patch.object(inspector,'PEM_TABLE_ADDRESS',IMAGE_BASE+0x3020):
+            bundle=ca_code_bundle(data,sections,[(0x1000,0x1010),(0x2010,0x2030),(0x4000,0x4100)])
+        self.assertEqual(bundle['total_code_bytes'],512)
+        self.assertEqual(len(bundle['function_ranges']),2)
+        self.assertEqual(bytes.fromhex(bundle['regions'][1]['bytes']),data[0x500:0x600])
+        self.assertEqual(bundle['regions'][1]['sha256'],hashlib.sha256(data[0x500:0x600]).hexdigest())
+        self.assertEqual(bundle['indirect_pointer_slots'],[dict(address=hex(IMAGE_BASE+0x3000),file_value=hex(IMAGE_BASE+0x1000))])
+        self.assertEqual(len(bytes.fromhex(bundle['pem_table']['bytes'])),0x78)
+        self.assertEqual(bytes(data),original)
+
+    def test_code_bundle_rejects_nonexecutable_or_incomplete_ranges(self):
+        data=bytearray(0x800)
+        regions=(('original',IMAGE_BASE+0x1000,0x100),)
+        with patch.object(inspector,'CA_CODE_REGIONS',regions):
+            for section in ({**self.section(),'executable':False},
+                            {**self.section(),'raw_size':0x80,'executable':True}):
+                with self.assertRaisesRegex(ValueError,'executable region missing'):
+                    ca_code_bundle(data,[section],[])
 
     def test_ca_report_stops_exporting_at_function_limit(self):
         data=bytearray(0x800)

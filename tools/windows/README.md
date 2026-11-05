@@ -95,7 +95,8 @@ patched based on this report alone. Share `Anthem-tls-code.json` for analysis.
 For the previously inspected executable (SHA-256
 `63cbc85f17ebd5d9ede8d72cef07eff40945bf5000604b52d482812cbbcd0338`),
 the CA-loader investigation can follow PEM marker pointers through data tables,
-RIP-relative code references, and two levels of candidate callers:
+RIP-relative code references, and four levels of candidate callers, including
+direct jump stubs without unwind records:
 
 ```powershell
 py -3 tools/windows/inspect_tls_refs.py 'E:\EA Games\Anthem\Anthem.exe' --ca-loader --output Anthem-ca-code.json
@@ -119,6 +120,34 @@ No private key belongs in the game-side loader. Keep the current certificate
 pair while investigating; this report neither regenerates it nor installs it in
 Windows. Static CA-loading code alone does not prove the current connection
 failure is caused by certificate trust.
+
+The first report located a PEM marker parser at `0x147d65270`, its marker table
+at `0x143732520`, and an original entry stub at `0x140823370` that jumps to the
+parser. The parser locates BEGIN/END delimiters and returns the certificate body;
+it does not register a trusted CA. An earlier inspector stopped at the entry
+stub because it had no unwind record. The current inspector follows its callers
+without treating the stub as a verified public CA-loading API.
+
+To examine the surrounding TLS implementation without repeatedly requesting
+individual function excerpts, export the optional code bundle:
+
+```powershell
+py -3 tools/windows/inspect_tls_refs.py 'E:\EA Games\Anthem\Anthem.exe' --ca-code-bundle --output Anthem-ca-bundle.json
+```
+
+This mode implies `--ca-loader` and includes two fixed 512 KiB executable file
+regions around the observed TLS code and original entries, relevant unwind
+ranges, the PEM marker table, and bounded static indirect-call pointer values.
+It adds 1 MiB of raw code, represented as hex in the JSON. It does not attach to
+the game, read process heap/session data, or call functions. Share
+`Anthem-ca-bundle.json` for offline analysis; keep the existing executable,
+certificates and earlier report. Import pointers may be unresolved in a file,
+and static code still needs runtime verification before a loader can call it.
+
+For private GitHub repositories, download updated tools through GitHub while
+signed in. An unauthenticated raw-file request can return 404 even when the file
+exists; a successful download in the authenticated cloud session does not
+establish that an anonymous PowerShell request will work.
 
 ## Patching and debugger changes
 
