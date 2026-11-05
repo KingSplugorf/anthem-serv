@@ -4,6 +4,7 @@
 /data/logs/
 /data/captures/
 /data/crash_seh.log
+/data/local_ca_*.json
 /game.conf
 /game.conf.avant
 __pycache__/

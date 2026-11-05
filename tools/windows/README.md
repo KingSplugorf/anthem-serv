@@ -110,16 +110,12 @@ Share `Anthem-ca-code.json`; the original executable, DLLs, and certificates are
 unchanged. A byte-pattern reference can occur inside an instruction operand, so
 the reported candidates require disassembly and runtime verification.
 
-CA registration is **not implemented yet**. The intended integration is to load
-only the public development certificate through a verified game CA-loading API,
-after its TLS library initializes and before connecting. Its address, calling
-convention, initialization requirements, and success result must be established
-for this build before invoking it. The reference DirtySDK API name
-`ProtoSSLSetCACert` is a search clue, not a verified Anthem function address.
-No private key belongs in the game-side loader. Keep the current certificate
-pair while investigating; this report neither regenerates it nor installs it in
-Windows. Static CA-loading code alone does not prove the current connection
-failure is caused by certificate trust.
+An opt-in experimental CA-registration path is available for this exact build;
+see [Experimental local CA registration](#experimental-local-ca-registration).
+It preserves certificate verification and imports only the public development
+certificate. The function identity is based on the inspected machine code;
+actual Windows execution and login still need validation. Static CA-loading
+code alone does not prove the connection failure is caused by certificate trust.
 
 The first report located a PEM marker parser at `0x147d65270`, its marker table
 at `0x143732520`, and an original entry stub at `0x140823370` that jumps to the
@@ -148,6 +144,67 @@ For private GitHub repositories, download updated tools through GitHub while
 signed in. An unauthenticated raw-file request can return 404 even when the file
 exists; a successful download in the authenticated cloud session does not
 establish that an anonymous PowerShell request will work.
+
+## Experimental local CA registration
+
+The supplied TLS bundle shows a two-argument CA importer at `0x147d6abc0`
+(original entry `0x140826440`). It parses PEM/DER, verifies the certificate with
+the self-signed-CA path, and copies public identity/key data into the CA list at
+`0x1442f29c0`. A game HTTP initializer calls this importer for embedded PEM
+certificates. The inspected TLS connect entry at `0x147d8fe90` has integer and
+pointer arguments following the Microsoft x64 ABI. These are static findings,
+not confirmation that this path handles the failing connection at runtime.
+
+`tools/windows_ca_loader.py` integrates with the native debugger to attempt
+registration before a secure local connection. It checks the executable SHA-256,
+the in-memory importer/verification/list-addition code hashes, the entry stubs,
+and the TLS connect prologue. Unexpected bytes abort before allocation. Once
+TLS global state is initialized, a hardware breakpoint redirects one existing
+game thread through a small call stub; it does not create a worker thread to
+call into the game's allocator. The trigger accepts only the redirector name,
+localhost or `127.0.0.1`, on ports 42230/10041. Other connections continue normally.
+
+The stub preserves volatile integer registers, flags, stack alignment, shadow
+space, and legacy floating-point/SSE state, calls the importer with only
+`data/certs/test.crt`, records its signed result, then resumes the original TLS
+connect entry. Certificate data/result storage remain read/write; code becomes
+execute/read after writing. Once entered, the small allocation remains until the
+game exits so an interrupted detach cannot free a possible return target. The
+game's certificate, hostname and signature checks remain enabled. Game files,
+the server certificate/key pair and Windows trust stores are not changed.
+
+Close existing game/launcher sessions, update the repository, then run from its
+root in PowerShell:
+
+```powershell
+Remove-Item Env:ANTHEM_TLS_DIAGNOSTICS -ErrorAction SilentlyContinue
+Remove-Item Env:ANTHEM_SKIP_PATCHES -ErrorAction SilentlyContinue
+$env:ANTHEM_LOAD_LOCAL_CA = '1'
+try { npm.cmd --prefix .\launcher start }
+finally { Remove-Item Env:ANTHEM_LOAD_LOCAL_CA -ErrorAction SilentlyContinue }
+```
+
+Click Play. If the first attempt already failed, wait for `Win32 local CA loader
+ready`, then retry connecting in the game. The supervisor allows 120 seconds for
+this phase and starts mission patches only after the importer returned a positive count
+and the debugger detached. A positive native result counts certificates added;
+zero means no new certificate was added (either a duplicate or an allocation
+failure) and is treated as unconfirmed; a negative result is rejection/failure.
+
+The report is `data/local_ca_PID.json`; the log is
+`data/logs/windows_ca_loader.log`. Reports include the public certificate's DER
+SHA-256, observed host/port metadata, native result and detach status. They do
+not include the private key, PEM contents or process heap dumps. If the connect
+breakpoint never fires, the current TLS-path hypothesis remains unconfirmed;
+do not treat a ready report as successful registration. A successful import
+alone also does not establish that login or mission startup works.
+
+The generated call stub has a native Linux x64 regression using synthetic
+Microsoft-ABI functions that clobber volatile registers/SSE state. The broader
+suite checks rejection, scoping, allocation protection, readiness correlation,
+and debugger cleanup with simulated Win32 APIs. Actual Windows API calls and
+the game's importer are still unverified. Leave the opt-in flag unset to retain
+the normal launch workflow.
 
 ## Patching and debugger changes
 

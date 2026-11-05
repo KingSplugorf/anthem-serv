@@ -64,8 +64,33 @@ class FakeKernel:
         self.calls.append(("flush", address, size))
         return 1
 
+    def VirtualAllocEx(self, handle, hint, size, flags, protection):
+        self.calls.append(('allocate',size,flags,protection))
+        self.protection.update((address,protection) for address in range(0x50000,0x50000+size,4096))
+        return 0x50000
+
+    def VirtualFreeEx(self, handle, address, size, flags):
+        self.calls.append(('release',address,size,flags))
+        return 1
+
 
 class MemoryTests(unittest.TestCase):
+    def test_owned_remote_allocation_uses_rw_then_rx_and_explicit_release(self):
+        api=FakeKernel()
+        with win.Memory(123,api=api) as memory:
+            address=memory.allocate(8192)
+            memory.protect_allocation(address,4096,0x20)
+            self.assertEqual(api.protection[address],0x20)
+            self.assertEqual(api.protection[address+4096],0x04)
+            with self.assertRaises(ValueError): memory.protect_allocation(address,4096,0x40)
+            with self.assertRaises(ValueError): memory.release(address+4096)
+            memory.release(address)
+            with self.assertRaises(ValueError): memory.release(address)
+        self.assertIn(('allocate',8192,0x3000,0x04),api.calls)
+        self.assertIn(('release',address,0,0x8000),api.calls)
+        with win.Memory(123,writable=False,api=api) as memory:
+            with self.assertRaises(io.UnsupportedOperation): memory.allocate(4096)
+
     def test_win64_memory_information_layout(self):
         self.assertEqual(C.sizeof(win.MEMORY_BASIC_INFORMATION), 48)
         self.assertEqual(win.MEMORY_BASIC_INFORMATION.RegionSize.offset, 24)
@@ -223,13 +248,16 @@ class DebuggerTests(unittest.TestCase):
 
 
 class DebuggerLifecycleTests(unittest.TestCase):
-    def exercise(self, fail_callback=False, tls_diagnostics=False):
+    def exercise(self, fail_callback=False, tls_diagnostics=False, ca_registration=False):
         stop = threading.Event()
         k = Mock()
         hooks = Mock()
         hooks.starting_info.return_value = (0x20000, (0,0,0,0))
+        hooks.addresses=(0x147d8fe90,0x90080)
+        hooks.completed=False
+        hooks.report={}
         if fail_callback:
-            (hooks.failure if tls_diagnostics else hooks.connect).side_effect = OSError('hook read failed')
+            (hooks.handle if ca_registration else hooks.failure if tls_diagnostics else hooks.connect).side_effect = OSError('hook read failed')
         contexts = {}
         dispositions = []
         events = [(3,None), (1,debugger.BREAKPOINT), (1,0xc0000005), (1,debugger.SINGLE_STEP)]
@@ -278,14 +306,23 @@ class DebuggerLifecycleTests(unittest.TestCase):
              patch.object(debugger,'open_memory',return_value=io.BytesIO()), \
              patch.object(debugger,'MissionHooks',return_value=hooks), \
              patch.object(debugger,'TlsFailureHooks',return_value=hooks), \
+             patch('windows_ca_loader.LocalCaHooks',return_value=hooks), \
              patch.object(debugger,'debug_api',return_value=k):
             if fail_callback:
                 with self.assertRaisesRegex(OSError,'hook read failed'):
-                    debugger.run(123,stop,tls_diagnostics=tls_diagnostics)
+                    debugger.run(123,stop,tls_diagnostics=tls_diagnostics,
+                                 ca_certificate='test.crt' if ca_registration else None)
             else:
-                debugger.run(123,stop,tls_diagnostics=tls_diagnostics)
+                debugger.run(123,stop,tls_diagnostics=tls_diagnostics,
+                             ca_certificate='test.crt' if ca_registration else None)
         self.assertEqual(dispositions,[debugger.CONTINUE,debugger.CONTINUE,debugger.NOT_HANDLED,debugger.CONTINUE])
-        if tls_diagnostics:
+        if ca_registration:
+            hooks.handle.assert_called_once()
+            hooks.prepare.assert_called_once()
+            hooks.mark_ready.assert_called_once()
+            hooks.close.assert_called_once_with(release_unused=True,process_exited=False)
+            hooks.starting_info.assert_not_called()
+        elif tls_diagnostics:
             hooks.failure.assert_called_once()
             hooks.mark_ready.assert_called_once()
             hooks.starting_info.assert_not_called()
@@ -312,6 +349,12 @@ class DebuggerLifecycleTests(unittest.TestCase):
 
     def test_tls_capture_failure_still_restores_threads(self):
         self.exercise(fail_callback=True,tls_diagnostics=True)
+
+    def test_ca_mode_uses_connect_and_completion_breakpoints_then_detaches(self):
+        self.exercise(ca_registration=True)
+
+    def test_ca_callback_failure_still_restores_registers_and_detaches(self):
+        self.exercise(fail_callback=True,ca_registration=True)
 
 
 class CombatSelectionTests(unittest.TestCase):

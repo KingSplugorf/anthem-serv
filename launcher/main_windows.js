@@ -187,7 +187,7 @@ async function play(_event, { mode, ip }) {
     patches.once("exit", (code) => {
       patches = null;
       if (code !== 0 && game) {
-        log(`Patching failed (${code}); stopping the session. See data/logs/gdb_active_mission.log`);
+        log(`Patching failed (${code}); stopping the session. See the patch output above and data/logs/`);
         stopSession().catch((error) => log(error.message));
       }
       status();

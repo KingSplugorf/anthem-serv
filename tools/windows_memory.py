@@ -39,6 +39,8 @@ def kernel():
         "ReadProcessMemory": ([W.HANDLE, C.c_void_p, C.c_void_p, SIZE, C.POINTER(SIZE)], BOOL),
         "WriteProcessMemory": ([W.HANDLE, C.c_void_p, C.c_void_p, SIZE, C.POINTER(SIZE)], BOOL),
         "VirtualProtectEx": ([W.HANDLE, C.c_void_p, SIZE, DWORD, C.POINTER(DWORD)], BOOL),
+        "VirtualAllocEx": ([W.HANDLE, C.c_void_p, SIZE, DWORD, DWORD], C.c_void_p),
+        "VirtualFreeEx": ([W.HANDLE, C.c_void_p, SIZE, DWORD], BOOL),
         "VirtualQueryEx": ([W.HANDLE, C.c_void_p, C.POINTER(MEMORY_BASIC_INFORMATION), SIZE], SIZE),
         "FlushInstructionCache": ([W.HANDLE, C.c_void_p, SIZE], BOOL),
         "WaitForSingleObject": ([W.HANDLE, DWORD], DWORD),
@@ -78,6 +80,7 @@ class Memory(io.RawIOBase):
         self.can_write = writable
         self.position = 0
         self.lock = threading.RLock()
+        self.allocations = {}
 
     def close(self):
         if not self.closed:
@@ -122,6 +125,31 @@ class Memory(io.RawIOBase):
             data = self.read_at(self.position, size)
             self.position += len(data)
             return data
+
+    def allocate(self, size):
+        if not self.can_write:
+            raise io.UnsupportedOperation("process opened read-only")
+        if not 0 < size <= 0x1000000:
+            raise ValueError("Invalid remote allocation size")
+        address = self.api.VirtualAllocEx(self.handle, None, size, 0x3000, 0x04)
+        check(address)
+        self.allocations[address] = size
+        return address
+
+    def protect_allocation(self, address, size, protection):
+        if not self.can_write:
+            raise io.UnsupportedOperation("process opened read-only")
+        if protection not in (0x04, 0x20) or not 0 < size <= self.allocations.get(address, 0):
+            raise ValueError("Expected an owned allocation and read/write or execute/read protection")
+        previous = DWORD()
+        check(self.api.VirtualProtectEx(self.handle, address, size, protection, C.byref(previous)))
+        check(self.api.FlushInstructionCache(self.handle, address, size))
+
+    def release(self, address):
+        if address not in self.allocations:
+            raise ValueError("Remote allocation is not owned by this handle")
+        check(self.api.VirtualFreeEx(self.handle, address, 0, 0x8000))
+        del self.allocations[address]
 
     def write(self, data):
         data = bytes(data)

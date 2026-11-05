@@ -5,6 +5,8 @@ Requires 64-bit CPython and the repository's exact game build at image base
 0x140000000. Reads 'stop' from stdin to clear breakpoints and detach gracefully.
 """
 import ctypes as C
+import argparse
+from contextlib import ExitStack
 import os
 from pathlib import Path
 import struct
@@ -59,7 +61,8 @@ class Event(C.Structure):
 class Context:
     """Windows AMD64 CONTEXT, explicitly aligned to 16 bytes (1232-byte ABI)."""
     OFFSETS = dict(dr0=72, dr1=80, dr2=88, dr3=96, dr6=104, dr7=112,
-                   rcx=128, rdx=136, rbx=144, rsp=152, rsi=168, r12=216, rip=248)
+                   rcx=128, rdx=136, rbx=144, rsp=152, rsi=168, r8=184, r9=192,
+                   r12=216, rip=248)
 
     def __init__(self):
         self.storage = C.create_string_buffer(1232 + 15)
@@ -106,6 +109,15 @@ class AddressSpace:
         self.memory.seek(address)
         self.memory.write(data)
 
+    def allocate(self, size):
+        return self.memory.allocate(size)
+
+    def protect_allocation(self, address, size, protection):
+        self.memory.protect_allocation(address, size, protection)
+
+    def release(self, address):
+        self.memory.release(address)
+
 
 def debug_api():
     k = kernel()
@@ -127,17 +139,28 @@ def debug_api():
     return k
 
 
-def run(pid, stop, *, tls_diagnostics=False):
+def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None):
     if os.name != "nt":
         raise OSError("Native Windows debugger requires 64-bit Windows")
+    if tls_diagnostics and ca_certificate is not None:
+        raise ValueError('Choose CA registration or passive TLS diagnostics for this debugger session')
     image_base, image_path = next(modules(pid))
     if image_base != 0x140000000 or Path(image_path).name.lower() not in ("anthem.exe", "dylan.main_win64_retail.exe"):
         raise OSError("Unsupported game image/base; fixed-address patches cannot be applied safely")
     k = debug_api()
     threads, originals = {}, {}
-    attached = False
-    with open_memory(pid, "rb" if tls_diagnostics else "r+b") as memory:
-        if tls_diagnostics:
+    attached = process_exited = False
+    ca_mode = ca_certificate is not None
+    special_mode = tls_diagnostics or ca_mode
+    with open_memory(pid, "rb" if tls_diagnostics else "r+b") as memory, ExitStack() as cleanup:
+        if ca_mode:
+            from windows_ca_loader import LocalCaHooks
+            hooks = LocalCaHooks(AddressSpace(memory), pid, ca_certificate)
+            cleanup.callback(lambda: hooks.close(release_unused=not attached, process_exited=process_exited))
+            hooks.validate(image_path)
+            hooks.prepare()
+            addresses, callbacks = hooks.addresses, ()
+        elif tls_diagnostics:
             hooks = TlsFailureHooks(AddressSpace(memory), pid)
             hooks.validate(image_path)
             addresses, callbacks = (TLS_FAILURE_SITE,), (hooks.failure,)
@@ -153,7 +176,9 @@ def run(pid, stop, *, tls_diagnostics=False):
             attached = True
             check(k.DebugSetProcessKillOnExit(False))
             initial_breakpoint = True
-            if tls_diagnostics:
+            if ca_mode:
+                hooks.log('attached', 'attached for public CA registration; waiting for debugger readiness')
+            elif tls_diagnostics:
                 hooks.log("attached for certificate diagnostics; mission hooks inactive; retry the game connection")
             else:
                 hooks.log(f"attaché (Win32), GameStartingInfo {hooks.starting_info()}")
@@ -179,7 +204,7 @@ def run(pid, stop, *, tls_diagnostics=False):
                         context = Context()
                         check(k.GetThreadContext(handle, context.address))
                         originals[event.tid] = {name: context.get(name) for name in ("dr0", "dr1", "dr2", "dr3", "dr6", "dr7")}
-                        configure(context, addresses, watchpoint=None if tls_diagnostics else 3)
+                        configure(context, addresses, watchpoint=None if special_mode else 3)
                         check(k.SetThreadContext(handle, context.address))
                     elif event.code == 4:  # EXIT_THREAD
                         handle = threads.pop(event.tid, None)
@@ -188,6 +213,7 @@ def run(pid, stop, *, tls_diagnostics=False):
                     elif event.code == 5:  # EXIT_PROCESS
                         stop.set()
                         attached = False
+                        process_exited = True
                     elif event.code == 6:  # LOAD_DLL; debugger owns the supplied file handle
                         if event.info.dll.file: check(k.CloseHandle(event.info.dll.file))
                     elif event.code == 1:
@@ -195,19 +221,23 @@ def run(pid, stop, *, tls_diagnostics=False):
                         disposition = NOT_HANDLED
                         if code == BREAKPOINT and initial_breakpoint:
                             initial_breakpoint = False
-                            if tls_diagnostics:
+                            if special_mode:
                                 hooks.mark_ready()
                             disposition = CONTINUE
                         elif code == SINGLE_STEP and event.tid in threads:
                             context = Context()
                             check(k.GetThreadContext(threads[event.tid], context.address))
-                            hits = context.get("dr6") & ((1 << len(callbacks)) - 1)
+                            hits = context.get("dr6") & ((1 << len(addresses)) - 1)
                             if hits:
                                 registers = {name: context.get(name) for name in ("rcx", "rdx", "rbx", "rsi", "r12", "rsp", "rip")}
                                 disposition = CONTINUE
                                 try:
-                                    for index, callback in enumerate(callbacks):
-                                        if hits & (1 << index): callback(registers)
+                                    if ca_mode:
+                                        hooks.handle(context, event.tid)
+                                        if hooks.completed: stop.set()
+                                    else:
+                                        for index, callback in enumerate(callbacks):
+                                            if hits & (1 << index): callback(registers)
                                 finally:
                                     context.resume()
                                     check(k.SetThreadContext(threads[event.tid], context.address))
@@ -234,13 +264,23 @@ def run(pid, stop, *, tls_diagnostics=False):
                         if suspended and k.ResumeThread(handle) == 0xffffffff:
                             errors.append("Could not resume debugger thread")
                 if not k.DebugActiveProcessStop(pid): errors.append(str(C.WinError(C.get_last_error())))
+                else: attached = False
             for handle in threads.values():
                 if not k.CloseHandle(handle): errors.append("Could not close debugger thread handle")
             if errors:
                 raise OSError("Debugger cleanup failed: " + "; ".join(errors))
+        if ca_mode:
+            hooks.report['detached'] = not attached
+            hooks.save()
+            return hooks.report
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('pid', type=int)
+    parser.add_argument('--ca-certificate', type=Path,
+                        help='Experimental build-specific registration of this public PEM before a local TLS connect')
+    args = parser.parse_args()
     stop = threading.Event()
     def listen():
         for line in sys.stdin:
@@ -250,7 +290,10 @@ def main():
         stop.set()  # parent exited; detach instead of leaving the game debugged
     threading.Thread(target=listen, daemon=True).start()
     try:
-        run(int(sys.argv[1]), stop, tls_diagnostics=os.environ.get("ANTHEM_TLS_DIAGNOSTICS") == "1")
+        result = run(args.pid, stop, tls_diagnostics=os.environ.get("ANTHEM_TLS_DIAGNOSTICS") == "1",
+                     ca_certificate=args.ca_certificate)
+        if args.ca_certificate is not None and not result.get('loaded'):
+            parser.exit(1, 'CA registration did not complete successfully; inspect data/local_ca_PID.json\n')
     except KeyboardInterrupt:
         stop.set()
 

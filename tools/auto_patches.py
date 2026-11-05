@@ -104,6 +104,54 @@ def wait_for_tls_diagnostics(pid, debugger, timeout=30, run_id=None):
     raise RuntimeError("Game exited before TLS diagnostics became ready")
 
 
+def wait_for_local_ca(pid, debugger, run_id, timeout=120):
+    deadline, announced = time.monotonic()+timeout, False
+    report = os.path.join('data', f'local_ca_{pid}.json')
+    while alive(pid):
+        # Observe exit before reading: a report read just before child exit can
+        # precede its final detached=true write even when poll() then sees 0.
+        result = debugger.poll()
+        state = {}
+        try:
+            with open(report, encoding='utf-8') as source:
+                candidate = json.load(source)
+                if candidate.get('run_id') == run_id: state = candidate
+        except (FileNotFoundError, PermissionError, json.JSONDecodeError):
+            pass
+        if state.get('ready') and not announced:
+            print('Win32 local CA loader ready: retry connecting in the game if needed', flush=True)
+            announced = True
+        if result is not None:
+            if (result == 0 and state.get('loaded') and state.get('completed') and state.get('detached')
+                    and type(state.get('native_result')) is int and state['native_result'] > 0):
+                print(f"Win32 local CA registered: native result {state['native_result']}; continuing mission setup", flush=True)
+                return True
+            raise RuntimeError(f'Local CA registration did not succeed; inspect {report} and data/logs/windows_ca_loader.log')
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f'Local CA registration did not finish within {timeout:g} seconds; inspect {report} and data/logs/windows_ca_loader.log')
+        time.sleep(0.1)
+    return False
+
+
+def load_local_ca(pid):
+    run_id = uuid.uuid4().hex
+    certificate = os.path.join(os.path.dirname(TOOLS), 'data', 'certs', 'test.crt')
+    command = [sys.executable, '-X', 'utf8', '-I', os.path.join(TOOLS, 'windows_debugger.py'),
+               pid, '--ca-certificate', certificate]
+    with open(os.path.join('data', 'logs', 'windows_ca_loader.log'), 'w', encoding='utf-8') as log:
+        debugger = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT,
+                                    start_new_session=True, env={**os.environ, 'ANTHEM_CA_RUN_ID': run_id})
+        try:
+            return wait_for_local_ca(pid, debugger, run_id)
+        finally:
+            if debugger.poll() is None:
+                # A self-contained call stub can finish after graceful detach;
+                # do not force-kill a debugger while its game thread is calling.
+                debugger.communicate(input=b'stop\n', timeout=15)
+            elif debugger.stdin is not None:
+                debugger.stdin.close()
+
+
 def wait_for_mission_start(pid, start, debugger=None):
     while alive(pid):
         if debugger is not None and debugger.poll() is not None:
@@ -207,6 +255,11 @@ def main():
             sys.exit("Unsupported game image/base for fixed-address patches")
         if EXIT_PROBE in combat_choice():
             sys.exit("sonde_sortie still requires Linux GDB; remove it from data/combat_patches.txt on Windows")
+        if os.environ.get('ANTHEM_LOAD_LOCAL_CA') == '1':
+            if os.environ.get('ANTHEM_TLS_DIAGNOSTICS') == '1':
+                sys.exit('Remove ANTHEM_TLS_DIAGNOSTICS before enabling local CA registration')
+            if not load_local_ca(pid):
+                return
         threading.Thread(target=lambda: until(pid, CODE_RETRY_SECONDS,
             lambda: run("patch_finrachaos.py", pid, "--appliquer").returncode == 0), daemon=True).start()
     for step in launch_steps(os.environ):
