@@ -6,6 +6,17 @@ const { IPV4, REDIRECTOR, redirectorAddress } = require("./hosts");
 const windows = require("./windows_runtime");
 const { localProfile } = require("./windows_profiles");
 
+if (!app.requestSingleInstanceLock()) {
+  console.error("Anthem Launcher is already running. Close it before selecting a different profile.");
+  app.quit();
+} else {
+// Keep Chromium's disposable cache away from settings and server saves. A new
+// directory avoids stale Windows cache locks and ACLs from earlier launches.
+const sessionCache = fs.mkdtempSync(path.join(app.getPath("temp"), "anthem-launcher-cache-"));
+app.setPath("sessionData", sessionCache);
+app.commandLine.appendSwitch("disk-cache-dir", path.join(sessionCache, "Cache"));
+app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
+
 const ROOT = path.resolve(__dirname, "..");
 let window, game, patches;
 let services = [];
@@ -24,6 +35,14 @@ const log = (message) => send("journal", message);
 const status = () => send("etat", {
   localServer: services.length > 0, localServerReady: services.length === 3 && !starting,
   patches: Boolean(patches) || starting, game: Boolean(game), second: false, ready: Boolean(game),
+});
+
+app.on("second-instance", () => {
+  if (!window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+  log("Launcher already running. Close this session before selecting a different profile.");
 });
 
 function settings() {
@@ -229,3 +248,4 @@ app.on("before-quit", (event) => {
     .finally(() => app.quit());
 });
 app.on("window-all-closed", () => app.quit());
+}

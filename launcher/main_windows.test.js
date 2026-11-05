@@ -5,11 +5,15 @@ const vm = require("node:vm");
 const fs = require("node:fs");
 const path = require("node:path");
 
-async function launcherHarness({ deferReadiness = false, taskkillThrows = false, env = {} } = {}) {
+async function launcherHarness({ deferReadiness = false, taskkillThrows = false, env = {}, singleInstance = true } = {}) {
   const ipc = new Map();
   const app = new EventEmitter();
   app.whenReady = () => Promise.resolve();
-  app.getPath = () => "/user";
+  app.getPath = (name) => name === "temp" ? "/temp" : "/user";
+  const cachePaths = [], switches = [];
+  app.setPath = (name, value) => cachePaths.push({ name, value });
+  app.commandLine = { appendSwitch: (...args) => switches.push(args) };
+  app.requestSingleInstanceLock = () => singleInstance;
   let quitCalls = 0;
   const quit = new Promise((resolve) => app.once("quit", resolve));
   app.quit = () => {
@@ -66,10 +70,15 @@ async function launcherHarness({ deferReadiness = false, taskkillThrows = false,
       this.emit("closed");
     }
     loadFile() {}
+    isMinimized() { return Boolean(this.minimized); }
+    restore() { this.minimized = false; }
+    show() { this.shown = true; }
+    focus() { this.focused = true; }
   }
   const fileSystem = {
     existsSync: () => true,
     mkdirSync() {}, writeFileSync() {}, copyFileSync() {}, closeSync() {}, openSync: () => 8,
+    mkdtempSync: (prefix) => `${prefix}unique`,
     readFileSync(file) {
       if (file.endsWith("windows.json")) return JSON.stringify({ gameExe: "D:\\Anthem\\Anthem.exe", mode: "local" });
       if (file === "hosts") return "127.0.0.1 spring18.gosredirector.ea.com\n";
@@ -92,8 +101,41 @@ async function launcherHarness({ deferReadiness = false, taskkillThrows = false,
     __dirname, process: { env }, console: { error: (...args) => errors.push(args) },
   }, { filename: "main_windows.js" });
   await new Promise(setImmediate);
-  return { ipc, spawned, killed, logs, ready, app, quit, windows, errors, quitCalls: () => quitCalls };
+  return { ipc, spawned, killed, logs, ready, app, quit, windows, errors, cachePaths, switches, quitCalls: () => quitCalls };
 }
+
+test("Chromium caches use a temporary session directory while settings and saves keep userData", async () => {
+  const harness = await launcherHarness();
+  assert.deepEqual(harness.cachePaths, [{ name: "sessionData", value: "/temp/anthem-launcher-cache-unique" }]);
+  assert.deepEqual(harness.switches, [["disk-cache-dir", "/temp/anthem-launcher-cache-unique/Cache"], ["disable-gpu-shader-disk-cache"]]);
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  const bigs = harness.spawned.find((item) => item.command === "bigs.exe");
+  assert.equal(bigs.options.env.BIGS_ETAT, "/user/server/state.json");
+  await harness.ipc.get("arreter")();
+});
+
+test("a second launcher exits before creating caches, windows or services", async () => {
+  const harness = await launcherHarness({ singleInstance: false });
+  await harness.quit;
+  assert.equal(harness.quitCalls(), 1);
+  assert.equal(harness.ipc.size, 0);
+  assert.equal(harness.windows.length, 0);
+  assert.equal(harness.spawned.length, 0);
+  assert.deepEqual(harness.cachePaths, []);
+});
+
+test("a second-instance request focuses the running launcher without stopping its game", async () => {
+  const harness = await launcherHarness();
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  const window = harness.windows[0];
+  window.minimized = true;
+  harness.app.emit("second-instance");
+  assert.equal(window.minimized, false);
+  assert.equal(window.shown, true);
+  assert.equal(window.focused, true);
+  assert.deepEqual(harness.killed, []);
+  await harness.ipc.get("arreter")();
+});
 
 test("Windows launcher starts native services, the game and Python patches, then stops only its children", async () => {
   const harness = await launcherHarness();

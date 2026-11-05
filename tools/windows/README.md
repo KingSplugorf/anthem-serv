@@ -344,6 +344,22 @@ For manual launches, `ANTHEM_PROFILE=fresh`, `ANTHEM_PROFILE_ID`,
 experimental intro mode is also available as `ANTHEM_PROFILE=tutorial`, with a
 separate save and no precreated pilot; its intro flow is unvalidated.
 
+### Launcher cache access errors
+
+Chromium messages such as `Unable to move the cache: Access is denied` and
+`Gpu Cache Creation failed` concern the Electron launcher. They do not establish
+a game/server connection failure. A locked cache, a second launcher, or cache
+directory permissions can cause them.
+
+The Windows launcher now accepts one instance at a time and uses a new directory
+under the current user's temporary folder for Chromium session/cache data.
+GPU shader disk caching is disabled for the launcher window. Game settings,
+`windows.json`, certificates and `server/` saves retain their existing locations.
+Temporary `anthem-launcher-cache-*` folders can be removed after all launcher
+processes exit. Close existing launcher windows before updating; an older running
+copy does not participate in the new single-instance guard. To change a profile,
+close the existing launcher first, then use the fresh-profile command.
+
 For a connection error before login, inspect `data/logs/redirector.log`. The
 redirector records the ClientHello's server name, cipher suites and signature
 schemes, then the negotiated TLS version/cipher on success. Failures explicitly
