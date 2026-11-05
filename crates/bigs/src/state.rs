@@ -76,6 +76,9 @@ impl StateFile {
     pub(crate) fn data(&self) -> &Map<String, Value> {
         &self.state
     }
+    pub(crate) fn full_introduction(&self) -> bool {
+        self.state.get("story_mode").and_then(Value::as_str) == Some("tutorial")
+    }
 
     /// Publish the candidate only after the complete save has reached disk.
     pub(crate) fn transaction<T>(

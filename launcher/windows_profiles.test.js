@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { localProfile, initialProfile, listProfiles, newCreatorProfile } = require("./windows_profiles");
+const { localProfile, initialProfile, listProfiles, newCreatorProfile, newCharacterProfile } = require("./windows_profiles");
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "anthem-profile-"));
@@ -56,6 +56,46 @@ test("tutorial profile uses a different slot with no precreated pilot", (t) => {
   assert.notEqual(fresh.state, tutorial.state);
   assert.deepEqual(JSON.parse(fs.readFileSync(tutorial.state)).pilotes, []);
   assert.equal(tutorial.env.BIGS_NOUVELLE_PARTIE, "1");
+  assert.equal(tutorial.env.ANTHEM_STORY_MODE, "1");
+  assert.equal(JSON.parse(fs.readFileSync(tutorial.state)).story_mode, "tutorial");
+});
+
+test("New character defaults to an isolated full introduction and explicit hub mode stays available", (t) => {
+  const { root, user, preset } = fixture(t);
+  const original = localProfile(root, user, {});
+  const inherited = { ANTHEM_PROFILE: "fresh", ANTHEM_PILOT_NAME: "KingSplugorf",
+    ANTHEM_SKIP_PATCHES: "1", ANTHEM_TLS_DIAGNOSTICS: "1", ANTHEM_MISSION_LIFECYCLE: "0" };
+  const key = newCharacterProfile(root, user, inherited);
+  assert.match(key, /^tutorial-/);
+  const intro = localProfile(root, user, inherited, key);
+  assert.deepEqual(JSON.parse(fs.readFileSync(intro.state)).pilotes, []);
+  assert.equal(intro.env.ANTHEM_MISSION_LIFECYCLE, "1");
+  assert.equal(intro.env.ANTHEM_SKIP_PATCHES, undefined);
+  assert.equal(intro.env.ANTHEM_TLS_DIAGNOSTICS, undefined);
+  assert.equal(intro.env.BIGS_CREATION_PERSONNAGE, undefined);
+  const bytes = fs.readFileSync(intro.state, "utf8");
+  localProfile(root, user, inherited, key);
+  assert.equal(fs.readFileSync(intro.state, "utf8"), bytes);
+  assert.equal(fs.readFileSync(original.state, "utf8"), preset);
+  const hub = newCharacterProfile(root, user, inherited, "creator");
+  assert.match(hub, /^creator-/);
+  assert.equal(localProfile(root, user, inherited, hub).env.BIGS_CREATION_PERSONNAGE, "1");
+  assert.throws(() => newCharacterProfile(root, user, inherited, "invalid"));
+});
+
+test("completed tutorial profiles resume without the direct-intro observer and Original drops inherited story flags", (t) => {
+  const { root, user } = fixture(t);
+  const intro = localProfile(root, user, {}, "tutorial-resume");
+  const saved = JSON.parse(fs.readFileSync(intro.state));
+  saved.pilotes = [{ id: 1, name: "Saved pilot", gender: "Male", appearance: "saved" }];
+  saved.persistence = [1835450465, 1910188215].map((id) => ({ DefinitionId: id,
+    RegisteredDefPropArray: [{ PropertyId: 1, Value: 11 }] }));
+  fs.writeFileSync(intro.state, JSON.stringify(saved));
+  const resumed = localProfile(root, user, {}, intro.key);
+  assert.equal(resumed.env.ANTHEM_STORY_MODE, undefined);
+  assert.equal(resumed.env.BIGS_NOUVELLE_PARTIE, "1");
+  const original = localProfile(root, user, { ANTHEM_STORY_MODE: "1" }, "development");
+  assert.equal(original.env.ANTHEM_STORY_MODE, undefined);
 });
 
 test("explicit Original selection escapes inherited fresh/creator flags and returns the old save unchanged", (t) => {

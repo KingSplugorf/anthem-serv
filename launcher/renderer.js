@@ -11,6 +11,7 @@ const changeFolder = document.getElementById("changer-dossier");
 const profileSection = document.getElementById("choix-profil");
 const profile = document.getElementById("profil");
 const newProfile = document.getElementById("nouveau-profil");
+const profileStart = document.getElementById("debut-profil");
 const modes = [...document.querySelectorAll("input[name=mode]")];
 let busy = false, creatingProfile = false, choicesReady = false;
 
@@ -30,6 +31,7 @@ const showFolder = (folder) => { gameFolder.textContent = folder ?? "not found";
 function refreshControls() {
   play.disabled = busy || creatingProfile || !choicesReady;
   profile.disabled = newProfile.disabled = busy || creatingProfile;
+  profileStart.disabled = busy || creatingProfile;
 }
 
 function showProfiles(profiles, selectedProfile) {
@@ -53,9 +55,9 @@ newProfile.addEventListener("click", async () => {
   creatingProfile = true;
   refreshControls();
   try {
-    const result = await window.lanceur.nouveauProfil();
+    const result = await window.lanceur.nouveauProfil(profileStart.value);
     showProfiles(result.profiles, result.selectedProfile);
-    append("New character slot created. Click Play to try the in-game character creator.");
+    append(profileStart.value === "tutorial" ? "New introduction save created. Click Play, wait for story hooks to be ready, then continue in the game." : "New Fort Tarsis character created. This option skips the tutorials.");
   } catch (error) { append(error.message); }
   finally { creatingProfile = false; refreshControls(); }
 });

@@ -17,7 +17,7 @@ RUN=fixtures.RUN
 
 
 class RepeatingDebuggerTests(unittest.TestCase):
-    def exercise(self, exit_process=False, story_leave=False):
+    def exercise(self, exit_process=False, story_leave=False, native_story=False):
         fixture=fixtures.MissionLifecycleTests('test_three_expeditions_restore_hub_and_use_new_startup_objects_and_points')
         fixture.setUp()
         # Its fixture producer is not the debugger under test; close and remove
@@ -67,7 +67,7 @@ class RepeatingDebuggerTests(unittest.TestCase):
                     memory.put(pointer,bytes(16))
                     memory.put(debugger.MissionHooks.starting_info.__globals__['STARTING_INFO_POINTER'],struct.pack('<Q',pointer))
                 if kind in ('startup','leave'):
-                    context.update(rcx=0x80000,rdx=value,dr6=4 if kind=='leave' and story_leave else 2)
+                    context.update(rcx=0x80000,rdx=value,dr6=(8 if story_leave else 4) if kind=='leave' and native_story else (4 if kind=='leave' and story_leave else 2))
             return 1
         def get_context(handle,address):
             buffer=(C.c_ubyte*1232).from_address(address)
@@ -90,7 +90,7 @@ class RepeatingDebuggerTests(unittest.TestCase):
         k.DuplicateHandle.side_effect=duplicate
         k.GetExitCodeThread.side_effect=exit_code
         k.SuspendThread.return_value=0; k.ResumeThread.return_value=1
-        with patch.object(debugger,'os',SimpleNamespace(name='nt',environ={})), \
+        with patch.object(debugger,'os',SimpleNamespace(name='nt',environ={'ANTHEM_STORY_MODE':'1'} if native_story else {})), \
              patch.object(debugger,'modules',return_value=iter([(0x140000000,'Anthem.exe')])), \
              patch.object(debugger,'open_memory',return_value=FileMemory()), \
              patch.object(debugger,'RepeatingMissionHooks',Hooks), \
@@ -98,10 +98,13 @@ class RepeatingDebuggerTests(unittest.TestCase):
              patch.object(debugger.C,'get_last_error',return_value=121,create=True):
             debugger.run(123,stop,mission_session=RUN)
         self.assertIn(('starting',1,0xd0000055,0xd0000055,0x20000),snapshots)
-        self.assertIn(('active',1,21,21,0),snapshots)
-        self.assertIn(('returning',1,1,1,0),snapshots)
+        active=85 if native_story else 21
+        idle=5 if native_story else 1
+        last=debugger.STORY_SUCCESS_CALLBACK if native_story else 0
+        self.assertIn(('active',1,active,active,last),snapshots)
+        self.assertIn(('returning',1,idle,idle,0),snapshots)
         self.assertIn(('starting',2,0xd0000055,0xd0000055,0x21000),snapshots)
-        self.assertIn(('active',2,21,21,0),snapshots)
+        self.assertIn(('active',2,active,active,last),snapshots)
         self.assertEqual(contexts[20]['dr7'],1 if exit_process else 0)
         self.assertEqual(contexts[21]['dr7'],1 if exit_process else 0)
         self.assertEqual(instances[0].phase,'stopped')
@@ -119,6 +122,9 @@ class RepeatingDebuggerTests(unittest.TestCase):
 
     def test_game_exit_revokes_workers_and_closes_without_reading_dead_game_memory(self):
         self.exercise(exit_process=True)
+
+    def test_full_intro_observer_preserves_normal_matchmaking_and_cleans_all_thread_breakpoints(self):
+        self.exercise(native_story=True)
 
     def test_failed_thread_suspension_resumes_every_thread_already_paused(self):
         k=Mock()

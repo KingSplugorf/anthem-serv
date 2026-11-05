@@ -353,12 +353,18 @@ def supervise_missions(pid, run_id, debugger):
             return managed_spawn(command, env=env, stdout=output, stderr=subprocess.STDOUT)
     Supervisor(pid, run_id, debugger, launch, lambda generation: launch(generation), alive,
                announce=lambda text: print(f"{time.strftime('%H:%M:%S')} {text}", flush=True),
-               status_callback=lambda state: print('MISSION_STATUS = ' + json.dumps(state), flush=True)).run()
+               status_callback=lambda state: print('MISSION_STATUS = ' + json.dumps(state), flush=True),
+               prepare_initial=os.environ.get('ANTHEM_STORY_MODE') == '1').run()
 
 
 def launch_steps(environment):
     redirection = ("launch_from_hub.py", "--pair") if environment.get(PEER_HOST) == "1" else ("launch_from_hub.py",)
-    return [redirection, (NAVIGATION, "poser"), ("end_expedition.py", "poser"), ("missions_inproc.py",), ("default_point.py", "--quetes")]
+    steps = [redirection, (NAVIGATION, "poser"), ("end_expedition.py", "poser")]
+    # Attach the story startup observer before the large heap scans. The
+    # supervisor owns background preparation alongside the native introduction.
+    if environment.get('ANTHEM_STORY_MODE') != '1':
+        steps += [("missions_inproc.py",), ("default_point.py", "--quetes")]
+    return steps
 
 
 def step_done(pid, step):

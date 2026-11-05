@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("lanceur", {
   choix: () => ipcRenderer.invoke("choix"),
   jouer: (mode, ip, profileKey) => ipcRenderer.invoke("jouer", { mode, ip, profileKey }),
-  nouveauProfil: () => ipcRenderer.invoke("nouveau-profil"),
+  nouveauProfil: (mode) => ipcRenderer.invoke("nouveau-profil", mode),
   dossierJeu: () => ipcRenderer.invoke("dossier-jeu"),
   second: () => ipcRenderer.invoke("second"),
   arreter: (which) => ipcRenderer.invoke("arreter", which),

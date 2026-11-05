@@ -87,6 +87,11 @@ tools/windows/update-lifecycle.ps1
 tools/windows/build_lifecycle_manifest.py
 tools/windows/README.md
 tools/windows/PROGRESSION.md
+tools/windows/INTRODUCTION.md
+crates/bigs/tests/profiles.rs
+tools/tests/test_native_introduction.py
+tools/tests/test_mission_diagnostics.py
+tools/tests/test_repeating_debugger.py
 '''.split()
 
 

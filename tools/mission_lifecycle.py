@@ -19,6 +19,7 @@ LEAVE_SUCCESS = 0x1481F14D2
 LEAVE_CODE = bytes.fromhex('b2014889f9ff5718')
 PLAYER_SLOTS = 0x142B2ABE0
 EVENT_PREFIX = b'MISSION_EVENT = '
+NATIVE_INTRO_QUESTS = {2015846446: 'Heart of Rage', 3808355666: 'Shaper Ruin'}
 
 
 def atomic_json(path, value):
@@ -126,7 +127,8 @@ class TransitionPoints:
 
 
 class RepeatingMissionHooks(MissionHooks):
-    def __init__(self, memory, pid, run_id, data=Path('data'), persona=1000, clock=time.monotonic, timeout=180):
+    def __init__(self, memory, pid, run_id, data=Path('data'), persona=1000, clock=time.monotonic, timeout=180,
+                 native_story=False):
         super().__init__(memory, pid, data)
         self.run_id, self.persona, self.clock, self.timeout = run_id, persona, clock, timeout
         self.generation, self.sequence = 0, 0
@@ -135,6 +137,8 @@ class RepeatingMissionHooks(MissionHooks):
         self.queued_events, self.seen_requests = [], set()
         self.deadline, self.last_startup_state = None, None
         self.points = None
+        self.native_story = self.native_story_watch = native_story
+        self.native_startup = self.native_observation = None
         self.report_path = self.data / f'mission_state_{pid}.json'
         self.lease_path = self.data / f'mission_lease_{pid}_{run_id}.bin'
         self.lease = Lease(self.lease_path, run_id, create=True)
@@ -150,6 +154,7 @@ class RepeatingMissionHooks(MissionHooks):
         atomic_json(self.report_path, {'schema': 1, 'run_id': self.run_id, 'pid': self.pid,
             'persona_id': self.persona, 'sequence': self.sequence, 'generation': self.generation,
             'phase': self.phase, 'ready': self.ready, 'reason': reason,
+            'native_story_enabled':self.native_story, 'native_story_watch':self.native_story_watch,
             'mission': self.current or self.pending or self.last,
             'lease': str(self.lease_path.resolve()), 'updated_at': time.time()})
         self.log(f'lifecycle {self.phase} #{self.generation}: {reason}')
@@ -257,9 +262,17 @@ class RepeatingMissionHooks(MissionHooks):
                 raise OSError('End Expedition callback does not match the supported build')
             if self.memory.read(STORY_SUCCESS_CALLBACK, len(STORY_SUCCESS_CODE)) != STORY_SUCCESS_CODE:
                 raise OSError('Story expedition callback does not match the supported build')
-            self.points = TransitionPoints(self.memory, self.data / f'quest_points_{self.pid}.json')
-            point = self.points.apply(self.launched[1])
-            self.use_root_level(registers['rcx'])
+            intro = self.native_story_watch and self.launched[1] in NATIVE_INTRO_QUESTS
+            if intro:
+                # The real client matchmaking attributes remain authoritative;
+                # do not replace the tutorial level or its scripted start point.
+                self.current['origin'] = 'native-story-matchmaking'
+                self.current['quest_name'] = NATIVE_INTRO_QUESTS[self.launched[1]]
+                point = 'native introduction (scripted transition retained)'
+            else:
+                self.points = TransitionPoints(self.memory, self.data / f'quest_points_{self.pid}.json')
+                point = self.points.apply(self.launched[1])
+                self.use_root_level(registers['rcx'])
             self.memory.write(pointer, struct.pack('<IIII', *self.launched))
             self.publish(f'Preparing internal server at {point}')
         except (OSError, ValueError, KeyError, struct.error) as error:
@@ -268,6 +281,8 @@ class RepeatingMissionHooks(MissionHooks):
     def startup(self, registers):
         self.poll()
         if self.launched is None:
+            if self.native_story_watch:
+                self.observe_native_startup(registers)
             return
         try:
             state = registers['rdx'] & 0xffffffff
@@ -279,11 +294,53 @@ class RepeatingMissionHooks(MissionHooks):
                 self.memory.write(startup + 0x18, struct.pack('<IIII', *self.launched))
                 self.memory.write(startup + 0x31, b'\x01')
             if state == 8:
+                if self.current and self.current.get('origin', '').startswith('native-story-'):
+                    self.native_startup = (registers['rcx'], tuple(self.current['attributes']))
                 self.launched, self.deadline, self.phase = None, None, 'active'
                 self.lease.activate(self.generation)
                 self.publish('Internal mission server started; startup overrides released')
         except (OSError, ValueError, struct.error) as error:
             self.finish('failed', f'Startup rejected safely: {error}')
+
+    def observe_native_startup(self, registers):
+        """Recognize direct native tutorial startup without inventing a launch.
+
+        No level, checkpoint, GameStartingInfo or tutorial flag is overwritten.
+        Only a known tutorial at observed startup state 8 can enable combat.
+        """
+        startup, state = registers['rcx'], registers['rdx'] & 0xffffffff
+        try:
+            values = struct.unpack('<IIII', self.memory.read(startup + 0x18, 16))
+        except (OSError, struct.error):
+            return
+        observation = (startup, state, values)
+        if observation != self.native_observation:
+            self.native_observation = observation
+            atomic_json(self.data / f'native_story_{self.pid}.json', {
+                'schema':1,'run_id':self.run_id,'pid':self.pid,'startup':startup,
+                'state':state,'attributes':values,'known_tutorial':values[1] in NATIVE_INTRO_QUESTS})
+            self.log(f'native introduction: startup {startup:#x}, state {state}, attributes {values}')
+        current_native = self.current and self.current.get('origin', '').startswith('native-story-')
+        if current_native and (state != 8 or self.native_startup != (startup, values)):
+            self.finish('returning', 'Native introduction level changing; old combat writes revoked')
+            self.native_startup = None
+        if state != 8 or values[1] not in NATIVE_INTRO_QUESTS:
+            if state != 8 and not self.current:
+                self.native_startup = None
+            return
+        if self.current or self.pending:
+            return  # Never steal a real matchmaking request or another mission.
+        if self.native_startup == (startup, values):
+            return
+        self.generation += 1
+        self.current = {'schema':1,'origin':'native-story-direct',
+            'server_run_id':f'native-story-{self.run_id}', 'game_id':self.generation,
+            'persona_id':self.persona,'attributes':list(values),
+            'quest_name':NATIVE_INTRO_QUESTS[values[1]]}
+        self.native_startup = (startup, values)
+        self.phase, self.deadline = 'active', None
+        self.lease.activate(self.generation)
+        self.publish('Native introduction server reached startup 8; scripted launch retained')
 
     def gate(self, registers):
         self.poll()

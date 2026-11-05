@@ -117,11 +117,15 @@ def replace_configuration(context, old_addresses, addresses, *, old_watchpoint, 
 
 def mission_breakpoints(hooks):
     if isinstance(hooks, RepeatingMissionHooks) and hooks.phase == 'active':
+        if hooks.native_story_watch:
+            return (MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY, LEAVE_SUCCESS, STORY_SUCCESS_CALLBACK), None
         return (MISSION_CONNECT_STATE, LEAVE_SUCCESS, STORY_SUCCESS_CALLBACK), None
     # The dependent handlers do nothing until a mission has been selected.
     # In particular, an idle PlayMode write watch can stop every game thread
     # for writes that never need a Python callback in the hub.
     if hooks.launched is None:
+        if isinstance(hooks, RepeatingMissionHooks) and hooks.native_story_watch:
+            return (MISSION_CONNECT_STATE, STARTUP_STATE_ENTRY), None
         return (MISSION_CONNECT_STATE,), None
     try:
         pointer, _ = hooks.starting_info()
@@ -245,7 +249,8 @@ def run(pid, stop, *, tls_diagnostics=False, ca_certificate=None, mission_sessio
         else:
             if mission_session is not None:
                 hooks = RepeatingMissionHooks(AddressSpace(memory), pid, mission_session,
-                    persona=int(os.environ.get('JOUEUR_ID', '1000')))
+                    persona=int(os.environ.get('JOUEUR_ID', '1000')),
+                    native_story=os.environ.get('ANTHEM_STORY_MODE') == '1')
                 cleanup.callback(hooks.lease.close)
             else:
                 hooks = MissionHooks(AddressSpace(memory), pid)

@@ -3,7 +3,7 @@ const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
 const PROFILE_MODES = ["development", "fresh", "creator", "tutorial"];
-const PROFILE_FLAGS = ["BIGS_NOUVELLE_PARTIE", "BIGS_CREATION_PERSONNAGE", "BIGS_PILOTES_SAUVEGARDES", "BIGS_SANS_PERSONNAGE", "BIGS_PERSISTANCE", "BIGS_PERSONNAGE_ID"];
+const PROFILE_FLAGS = ["BIGS_NOUVELLE_PARTIE", "BIGS_CREATION_PERSONNAGE", "BIGS_PILOTES_SAUVEGARDES", "BIGS_SANS_PERSONNAGE", "BIGS_PERSISTANCE", "BIGS_PERSONNAGE_ID", "ANTHEM_STORY_MODE"];
 
 function decodeProfile(key) {
   if (key === "development") return { mode: "development" };
@@ -69,7 +69,14 @@ function localProfile(root, userData, inherited, selection) {
       inventaire_depart_seul: true,
       pilotes: mode === "fresh" ? [{ id: 1, name, gender, appearance: "" }] : [],
     };
-    if (mode === "tutorial") env.BIGS_NOUVELLE_PARTIE = "1";
+    if (mode === "tutorial") {
+      initial.story_mode = "tutorial";
+      env.BIGS_NOUVELLE_PARTIE = "1";
+      env.ANTHEM_STORY_MODE = "1";
+      env.ANTHEM_MISSION_LIFECYCLE = "1";
+      delete env.ANTHEM_TLS_DIAGNOSTICS;
+      delete env.ANTHEM_SKIP_PATCHES;
+    }
     else if (mode === "creator") env.BIGS_CREATION_PERSONNAGE = "1";
     else env.BIGS_PILOTES_SAUVEGARDES = "1";
     env.ANTHEM_PROFILE_ID = id;
@@ -88,6 +95,12 @@ function localProfile(root, userData, inherited, selection) {
       throw new Error(`Invalid profile save: ${state}. Preserve it and select a different ANTHEM_PROFILE_ID.`);
     }
     if (saved.pilotes[0]?.name) env.JOUEUR_NOM = saved.pilotes[0].name;
+    if (mode === "tutorial") {
+      const completed = (definition) => saved.persistence?.some((entry) => entry.DefinitionId === definition &&
+        entry.RegisteredDefPropArray?.some((property) => property.PropertyId === 1 &&
+          Number.isInteger(property.Value) && (property.Value & 10) === 10));
+      if (completed(1835450465) && completed(1910188215)) delete env.ANTHEM_STORY_MODE;
+    }
   } else if (!fs.existsSync(state)) {
     fs.copyFileSync(path.join(root, "data", "saves", "state.json"), state, fs.constants.COPYFILE_EXCL);
   }
@@ -106,9 +119,14 @@ function localProfile(root, userData, inherited, selection) {
 }
 
 function newCreatorProfile(root, userData, inherited) {
-  const key = `creator-${randomUUID()}`;
+  return newCharacterProfile(root, userData, inherited, "creator");
+}
+
+function newCharacterProfile(root, userData, inherited, mode = "tutorial") {
+  if (!["tutorial", "creator"].includes(mode)) throw new Error("Choose Full introduction or Fort Tarsis.");
+  const key = `${mode}-${randomUUID()}`;
   localProfile(root, userData, inherited, key);
   return key;
 }
 
-module.exports = { localProfile, initialProfile, listProfiles, newCreatorProfile };
+module.exports = { localProfile, initialProfile, listProfiles, newCreatorProfile, newCharacterProfile };

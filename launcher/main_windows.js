@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { IPV4, REDIRECTOR, redirectorAddress } = require("./hosts");
 const windows = require("./windows_runtime");
-const { localProfile, initialProfile, listProfiles, newCreatorProfile } = require("./windows_profiles");
+const { localProfile, initialProfile, listProfiles, newCharacterProfile } = require("./windows_profiles");
 const { missionStatusStream } = require("./mission_status");
 
 if (!app.requestSingleInstanceLock()) {
@@ -140,6 +140,7 @@ async function play(_event, { mode, ip, profileKey }) {
     if (closing || currentGeneration !== generation) throw new Error("Startup cancelled");
   };
   const python = pythonCommand();
+  let sessionEnvironment = { ...process.env };
   starting = true;
   status();
   try {
@@ -159,6 +160,7 @@ async function play(_event, { mode, ip, profileKey }) {
       }
       if (!binaries) throw new Error("Windows service executables were not found after building");
       const profile = localProfile(ROOT, app.getPath("userData"), process.env, selectedProfile);
+      sessionEnvironment = profile.env;
       log(`Using ${profile.mode} profile: ${profile.state}`);
       fs.mkdirSync(path.join(ROOT, "data", "logs"), { recursive: true });
       // Use the certificate's DNS identity for TLS, retaining the resolved IP
@@ -167,8 +169,8 @@ async function play(_event, { mode, ip, profileKey }) {
       // ClientJoinMultiplayer, where launch_from_hub redirects it to InProc.
       const env = { ...profile.env, LISTEN_HOST: "127.0.0.1", BLAZE_HOST: REDIRECTOR, BLAZE_IP: address,
         BLAZE_SERVEUR_MISSION_ID: process.env.BLAZE_SERVEUR_MISSION_ID ?? "2000000",
-        BLAZE_LOCAL_LIFECYCLE: process.env.ANTHEM_MISSION_LIFECYCLE === "0" ? "0" : "1",
-        BLAZE_MISSION_PAIR: process.env.ANTHEM_MISSION_LIFECYCLE === "0" ? process.env.BLAZE_MISSION_PAIR || "0" : "0",
+        BLAZE_LOCAL_LIFECYCLE: profile.env.ANTHEM_MISSION_LIFECYCLE === "0" ? "0" : "1",
+        BLAZE_MISSION_PAIR: profile.env.ANTHEM_MISSION_LIFECYCLE === "0" ? profile.env.BLAZE_MISSION_PAIR || "0" : "0",
         BIGS_URL: `http://${address}:8080` };
       for (const executable of binaries) {
         ensureActive();
@@ -201,7 +203,7 @@ async function play(_event, { mode, ip, profileKey }) {
     }
     ensureActive();
     saveSettings({ ...config, mode, ip: address, profileKey: selectedProfile });
-    game = start(launch.command, launch.args, { cwd: launch.cwd, windowsHide: false });
+    game = start(launch.command, launch.args, { cwd: launch.cwd, windowsHide: false, env: sessionEnvironment });
     await launched(game);
     ensureActive();
     const gamePid = game.pid;
@@ -209,11 +211,12 @@ async function play(_event, { mode, ip, profileKey }) {
       log("Game closed");
       stopSession().catch((error) => log(error.message));
     });
-    if (process.env.ANTHEM_SKIP_PATCHES === "1") {
+    if (sessionEnvironment.ANTHEM_SKIP_PATCHES === "1") {
       log("Connection test: game started without external memory patches or debugger. Mission launching is not prepared in this mode.");
       return;
     }
-    const patchOptions = process.env.ANTHEM_MISSION_LIFECYCLE === "0" ? {} : { env: { ...process.env, MISSION_PAIR: "0" } };
+    const patchOptions = { env: { ...sessionEnvironment,
+      ...(sessionEnvironment.ANTHEM_MISSION_LIFECYCLE === "0" ? {} : { MISSION_PAIR: "0" }) } };
     const patchProcess = start(python.command, [...python.prefix, "-X", "utf8", "-I", path.join(ROOT, "tools", "auto_patches.py"), String(gamePid)], patchOptions);
     patches = patchProcess;
     patchProcess.stdout?.on("data", missionStatusStream((value) => {
@@ -250,9 +253,9 @@ app.whenReady().then(() => {
     return { ...config, modes: ["local"], lan: windows.lanAddress(), gameFolder: config.gameExe ? path.dirname(config.gameExe) : null, redirector,
       profiles: listProfiles(app.getPath("userData"), selectedProfile), selectedProfile };
   });
-  ipcMain.handle("nouveau-profil", () => {
+  ipcMain.handle("nouveau-profil", (_event, mode = "tutorial") => {
     if (starting || game || patches || services.length) throw new Error("Stop the game before creating a new character.");
-    const key = newCreatorProfile(ROOT, app.getPath("userData"), process.env);
+    const key = newCharacterProfile(ROOT, app.getPath("userData"), process.env, mode);
     saveSettings({ ...settings(), profileKey: key });
     return { profiles: listProfiles(app.getPath("userData"), key), selectedProfile: key };
   });

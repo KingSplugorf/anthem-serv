@@ -348,9 +348,11 @@ pub(crate) fn commit_quests(
                 let Some(definition) = element["DefinitionId"].as_u64() else {
                     continue;
                 };
-                if !quest_catalog()
-                    .iter()
-                    .any(|quest| quest["definitionId"] == definition)
+                let tutorial = context.new_game && matches!(definition, 1835450465 | 1910188215);
+                if (!tutorial
+                    && !quest_catalog()
+                        .iter()
+                        .any(|quest| quest["definitionId"] == definition))
                     || !record.completed.insert(definition)
                 {
                     continue;

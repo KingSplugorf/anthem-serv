@@ -44,8 +44,14 @@
 <div class="carte" id="choix-profil" hidden>
   <div class="titre">Character / save</div>
   <select id="profil" aria-label="Character or save"></select>
+  <label>New character start
+    <select id="debut-profil" aria-label="New character start">
+      <option value="tutorial">Full introduction (experimental)</option>
+      <option value="creator">Fort Tarsis — skip the tutorials</option>
+    </select>
+  </label>
   <button id="nouveau-profil" class="petit">New character</button>
-  <p class="doux">Choose Original save to return to your previous pilot. New character opens the experimental in-game creator in a separate save.</p>
+  <p class="doux">New character creates a separate save. Full introduction leaves pilot creation, tutorials and cinematics to the game. Choose Original save to return to your previous pilot.</p>
 </div>
 <div class="actions">
   <button id="jouer">Play</button>

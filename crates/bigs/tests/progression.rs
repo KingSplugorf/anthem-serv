@@ -713,3 +713,13 @@ async fn mixed_salvage_batch_rolls_back_the_first_valid_item_when_the_last_is_un
     assert_eq!(status, 400);
     assert_eq!(before, save.read());
 }
+
+#[tokio::test]
+async fn hub_tutorial_skip_commits_do_not_mint_intro_rewards() {
+    let save = Save::new(json!({"niveau_pilote":1}));
+    let app = save.app();
+    for definition in [json!(1835450465_u64), json!(1910188215_u64)] {
+        complete(&app, &definition, "game", 11).await;
+    }
+    assert_eq!(view(&app).await["xp"], 0);
+}

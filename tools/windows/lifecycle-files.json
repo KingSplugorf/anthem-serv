@@ -36,7 +36,7 @@
     },
     {
       "path": "crates/bigs/src/lib.rs",
-      "sha256": "60aca026a24019c01c434653ec83ed1ead74f4fcaa32d630e81ea4ea83c940c3"
+      "sha256": "58af5098cdf6bb7d0eee4a23866dae76c6fb1ebfa837072fe222f2bc62deb7de"
     },
     {
       "path": "crates/bigs/Cargo.toml",
@@ -48,7 +48,7 @@
     },
     {
       "path": "crates/bigs/src/state.rs",
-      "sha256": "9653d26883798ecf1500dc0fb2ddaac618ec06358eaa1762cd61dcf566ec5870"
+      "sha256": "f0361973f390c9f544f09a4cf8273973c17af7e7c4479923e62814316fc317ce"
     },
     {
       "path": "crates/bigs/src/startup.rs",
@@ -56,7 +56,7 @@
     },
     {
       "path": "crates/bigs/src/characters.rs",
-      "sha256": "d7d59a8b563aecb70d8abe395bccb5dcacc9585efb11b4a104d81d9a38d3aa43"
+      "sha256": "b4d0ac5ca2032921cbb69b1cfc3b0aedc949a4e126b81a10ccaecdb705730421"
     },
     {
       "path": "crates/bigs/src/gear.rs",
@@ -72,7 +72,7 @@
     },
     {
       "path": "crates/bigs/src/progression.rs",
-      "sha256": "713a88d65bbfd6971d9aeee86bc1028366f781dc5f8d18ac63c9ddfaf8cf8b2f"
+      "sha256": "f49ad1728d7cde5c1f4b9ce67cc8033f08d8c7830b8fdbfdc8d069564802ff4c"
     },
     {
       "path": "crates/bigs/src/progression.html",
@@ -88,7 +88,7 @@
     },
     {
       "path": "crates/bigs/tests/progression.rs",
-      "sha256": "d4cb80b06246f4c3c9118bfb060b1a86c1adab88869fe72c331930c3b896648c"
+      "sha256": "0b6e8fae95d3c91eb9bf0efea94ab0da03c5999d20c30d84d60db1425102fc5b"
     },
     {
       "path": "crates/bigs/tests/workbench.browser.cjs",
@@ -100,11 +100,11 @@
     },
     {
       "path": "launcher/main_windows.js",
-      "sha256": "368691323d2204fc6faf58370d4318d6df549c0a1852513b75a5f827f16cabae"
+      "sha256": "f18ca3e3cd5045347c6b8e156520ea8adbce89e8ad499d48baef0148adf4b69c"
     },
     {
       "path": "launcher/windows_profiles.js",
-      "sha256": "26dd202d9f7f40d7f06ac3e60b1674d4c49b874dfc54d4d1d1bf10bb75911bb3"
+      "sha256": "fb0c2a33484b1c9f0326db41b7ecaad04d367cf69dc45165a61dd81ed2d211c7"
     },
     {
       "path": "launcher/windows_runtime.js",
@@ -128,19 +128,19 @@
     },
     {
       "path": "launcher/renderer.js",
-      "sha256": "3171587e6371476418c707471090c48150c145d1823d2bdc8a3f542fb4c45a0f"
+      "sha256": "a9a0f9b6cacb70ce419139eb87c095b25e467540ea4afe776927f25617b9906f"
     },
     {
       "path": "launcher/preload.js",
-      "sha256": "bb953e18c867ab8c643324be671efeaadecc849b4c051f6829f84e0ab1f9f43d"
+      "sha256": "76c2b6d89b369d195c0fe0bcda31d4d97731f2d5b80449beeca474465aa67eaf"
     },
     {
       "path": "launcher/index.html",
-      "sha256": "78640218baa4118675f0b36ddc94a9055c5e1a52df5601d0d3675ea822d710b0"
+      "sha256": "584d3b0914cb7a96ec6e14475dc02fd6f57bcd0c73e175f7b866c1aff056997e"
     },
     {
       "path": "tools/auto_patches.py",
-      "sha256": "0f264bf0486a9bf8a3b29e64a0ad94987ac965c687ca8f685035872c96f8373c"
+      "sha256": "f4c89a3ac9da4998aa6cfae872b97a1a57a78bcc87c609ac2ba0431e15c2fde1"
     },
     {
       "path": "tools/mission_hooks.py",
@@ -156,7 +156,7 @@
     },
     {
       "path": "tools/mission_lifecycle.py",
-      "sha256": "02244eb85d0f3c5e9dae9955c678fb00bd774334f9a082eff29161a6527eb216"
+      "sha256": "167e1375e58859abf5215c6bcddc48a2faff7a803c3e794533ec97eb33e5298e"
     },
     {
       "path": "tools/mission_lease.py",
@@ -168,7 +168,7 @@
     },
     {
       "path": "tools/mission_supervisor.py",
-      "sha256": "30a2166a01ba30fcc05b32839913a65240410ea7523dcab30355da94a29ef87c"
+      "sha256": "06a50ef2daef12980dc7ef8a0510ee6156515a88a7618e00dd5598e6cada27c7"
     },
     {
       "path": "tools/mission_workers.py",
@@ -180,7 +180,7 @@
     },
     {
       "path": "tools/windows_debugger.py",
-      "sha256": "e29f87c53e4f9a15285d5f9983b2a5b297b91e0d1345c00edff4cc75dec01607"
+      "sha256": "17559ef2a5f9e20ec237cb7ba9cceff6c24f2eabcf4147ad5dd158512ec033bb"
     },
     {
       "path": "tools/windows_ca_loader.py",
@@ -280,7 +280,7 @@
     },
     {
       "path": "tools/windows/inspect_mission.py",
-      "sha256": "a4fc12fa828eff76d2526a2d4d0dd3854469d19158bb2acc4ac19b159ea4b852"
+      "sha256": "5835ee76eccd6aec844af9b6f5f841d35b289063d730e58aa48e11057b437a59"
     },
     {
       "path": "tools/windows/inspect_expedition.py",
@@ -300,15 +300,35 @@
     },
     {
       "path": "tools/windows/build_lifecycle_manifest.py",
-      "sha256": "4c04017fc1fd450eb6492c9d77d48f9bb93e9d0adb7e258eb67980753ae8c8b8"
+      "sha256": "4b04f1aa21bd3dc945e65f2277f2065343a44f20b9cab88138feda936e8cc1a8"
     },
     {
       "path": "tools/windows/README.md",
-      "sha256": "7b148309a8e2bae467587dff6384fb58c07cffefe2ca026b9bc3be96f9582299"
+      "sha256": "1f3dce1aad3fc9bffeb6f97da5b27be07a56f36c1259002d050b939a8ba65301"
     },
     {
       "path": "tools/windows/PROGRESSION.md",
-      "sha256": "89caa5ca95b5b84ba6d0e28f48c8dbcd97fad63131e5a95b4d0500d38143b977"
+      "sha256": "219e88351d4ac037d9df756d535d361e2c2248519b17148a2f5427fc45701992"
+    },
+    {
+      "path": "tools/windows/INTRODUCTION.md",
+      "sha256": "25b0db5e71f009d8ad169d7510e506251e45f0b6c7e7dad9255ed012917e1b73"
+    },
+    {
+      "path": "crates/bigs/tests/profiles.rs",
+      "sha256": "dfa2f9516da3d1f4bdd6e4ac537704d81b79bebee8eb6b1d434ef5c5f8b9a972"
+    },
+    {
+      "path": "tools/tests/test_native_introduction.py",
+      "sha256": "5ca39c8ef78d691fae0e810b3a95d61804354ea49875e94cf3ff9e88094d2ac2"
+    },
+    {
+      "path": "tools/tests/test_mission_diagnostics.py",
+      "sha256": "8c7d73d2936ae2cc3d9c8acdd8d23b21e0078e8ed719f31abe3c9aa8d9e63c38"
+    },
+    {
+      "path": "tools/tests/test_repeating_debugger.py",
+      "sha256": "df693d89247fd524f88bb3c4513fafc722a239efc4dd7f1095eff5f1a75cfb53"
     }
   ]
 }

@@ -134,7 +134,22 @@ pub async fn list(State(context): State<Context>) -> Json<Value> {
     )
 }
 
-pub async fn create(State(context): State<Context>) -> crate::progression::Reply {
+pub async fn create(State(context): State<Context>, body: Bytes) -> crate::progression::Reply {
+    let request: Value = if body.is_empty() {
+        json!({})
+    } else {
+        serde_json::from_slice(&body)
+            .map_err(|_| crate::progression::error("Invalid pilot creation JSON".into()))?
+    };
+    if !request.is_object() {
+        return Err(crate::progression::error(
+            "Expected pilot creation object".into(),
+        ));
+    }
+    let fields = request
+        .get("character")
+        .filter(|value| value.is_object())
+        .unwrap_or(&request);
     let mut characters = context.characters.lock().expect("registre des personnages");
     let mut saved_state = context.state.lock().expect("state");
     let mut index = characters.len() + 1;
@@ -149,7 +164,27 @@ pub async fn create(State(context): State<Context>) -> crate::progression::Reply
     {
         index += 1;
     }
-    let character = Character::new(index, &context.player_name);
+    let mut character = Character::new(index, &context.player_name);
+    if let Some(name) = fields["name"]
+        .as_str()
+        .filter(|name| !name.trim().is_empty())
+    {
+        if name.chars().count() > 64 || name.chars().any(char::is_control) {
+            return Err(crate::progression::error(
+                "Pilot name must contain at most 64 characters without controls".into(),
+            ));
+        }
+        character.name = name.trim().to_owned();
+    }
+    if let Some(gender) = fields["gender"]
+        .as_str()
+        .filter(|gender| matches!(*gender, "Male" | "Female"))
+    {
+        character.gender = gender.to_owned();
+    }
+    if let Some(appearance) = fields["appearanceData"].as_str() {
+        character.appearance = appearance.to_owned();
+    }
     println!("personnage créé : {} ({})", character.id, character.name);
     let response = entry(&character, 0);
     let persona = context.persona_id;
@@ -180,6 +215,31 @@ pub async fn create(State(context): State<Context>) -> crate::progression::Reply
     let _ = context.events.send(created);
     let _ = context.events.send(activated);
     Ok(Json(response))
+}
+
+/// Observations only: never marks a tutorial, customization or cinematic done.
+pub async fn onboarding(State(context): State<Context>) -> Json<Value> {
+    let pilots = context.characters.lock().expect("characters").clone();
+    let state = context.state.lock().expect("state");
+    let saved = state.saved_persistence();
+    let property = |definition: u64, id: u64| {
+        saved
+            .iter()
+            .find(|element| element["DefinitionId"] == definition)
+            .and_then(|element| element["RegisteredDefPropArray"].as_array())
+            .and_then(|properties| properties.iter().find(|value| value["PropertyId"] == id))
+            .map(|value| value["Value"].clone())
+            .unwrap_or(Value::Null)
+    };
+    let heart = property(1835450465, 1);
+    let shaper = property(1910188215, 1);
+    Json(
+        json!({"mode":if context.new_game {"full-introduction"}else if context.character_creator {"hub-creator"}else{"hub"},
+        "pilotCount":pilots.len(),"pilotCreated":property(1963412089,3031061379),
+        "heartOfRage":{"questId":2015846446_u64,"savedFlags":heart,"completed":heart.as_u64().is_some_and(|flags|flags&10==10)},
+        "shaperRuin":{"questId":3808355666_u64,"savedFlags":shaper,"completed":shaper.as_u64().is_some_and(|flags|flags&10==10)},
+        "tutorialCompletionInjected":!context.new_game}),
+    )
 }
 
 pub async fn active(State(context): State<Context>) -> Json<Value> {

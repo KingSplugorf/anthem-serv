@@ -234,3 +234,77 @@ async fn creator_starts_empty_and_preserves_customization_and_completion_on_rest
         .unwrap();
     assert_eq!(created["RegisteredDefPropArray"][0]["Value"], true);
 }
+
+#[tokio::test]
+async fn full_introduction_keeps_native_flags_and_explicit_identity_across_restart() {
+    let save = Save::fresh();
+    std::fs::write(&save.0, json!({"story_mode":"tutorial","niveau_pilote":1,"inventaire_depart_seul":true,"pilotes":[]}).to_string()).unwrap();
+    let app = router(save.context());
+    let before = std::fs::read(&save.0).unwrap();
+    let status = request(&app, "GET", "/local/onboarding", Value::Null).await;
+    assert_eq!(status["mode"], "full-introduction");
+    assert_eq!(status["pilotCount"], 0);
+    assert_eq!(status["tutorialCompletionInjected"], false);
+    assert_eq!(status["heartOfRage"]["savedFlags"], Value::Null);
+    assert_eq!(std::fs::read(&save.0).unwrap(), before);
+    let persistence = request(&app, "GET", "/api/character/1000/persistence", Value::Null).await;
+    assert_eq!(persistence["persistenceJsonData"], "[]");
+    let created = request(
+        &app,
+        "POST",
+        "/api/character/1000/characters",
+        json!({"character":{"name":"KingSplugorf","gender":"Male","appearanceData":"(0,6)"}}),
+    )
+    .await;
+    assert_eq!(created["character"]["xp"], 0);
+    assert_eq!(created["character"]["gender"], "Male");
+    for definition in [1835450465_u64, 1910188215_u64] {
+        let payload = json!({"persistenceJsonProp":json!([{"DefinitionId":definition,"RegisteredDefPropArray":[{"PropertyId":1,"Value":11}]}]).to_string()});
+        request(
+            &app,
+            "PUT",
+            "/api/character/1000/persistence",
+            payload.clone(),
+        )
+        .await;
+        request(&app, "PUT", "/api/character/1000/persistence", payload).await;
+    }
+    drop(app);
+    let restarted = router(save.context());
+    let active = request(
+        &restarted,
+        "GET",
+        "/api/character/1000/characters/active",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(active["character"]["name"], "KingSplugorf");
+    assert_eq!(active["character"]["appearanceData"], "(0,6)");
+    assert_eq!(active["character"]["xp"], 2000);
+    let status = request(&restarted, "GET", "/local/onboarding", Value::Null).await;
+    assert_eq!(status["heartOfRage"]["completed"], true);
+    assert_eq!(status["shaperRuin"]["completed"], true);
+    assert_eq!(status["pilotCreated"], Value::Null);
+}
+
+#[tokio::test]
+async fn invalid_creation_does_not_change_save_or_create_a_pilot() {
+    let save = Save::fresh();
+    let app = router(save.context().with_saved_characters());
+    let before = std::fs::read(&save.0).unwrap();
+    for body in ["{", "[]", "{\"name\":\"bad\\nname\"}"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/character/1000/characters")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 400);
+        assert_eq!(std::fs::read(&save.0).unwrap(), before);
+    }
+}

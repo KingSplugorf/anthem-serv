@@ -105,3 +105,7 @@ run `node crates/bigs/tests/workbench.browser.cjs` with the package on `NODE_PAT
 and optionally `CHROMIUM_PATH`/`BIGS_TEST_BINARY` configured. It starts an isolated
 temporary profile and checks craft retries after lost responses/page reloads,
 salvage, safe pilot-name rendering and an empty character list.
+
+Full-introduction slots also accept real completion commits for Heart of Rage
+and Shaper Ruin under the same one-time local reward rule. Creator-to-hub skip
+flags do not earn these rewards. See [Introduction](INTRODUCTION.md).

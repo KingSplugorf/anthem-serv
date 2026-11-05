@@ -325,13 +325,11 @@ fresh-profile environment variables, close the game/launcher and run:
 .\tools\windows\play-profile.ps1 -Profile Development -LoadLocalCa
 ```
 
-Click **New character**, then **Play**, to test the in-game creator in a new,
-empty level-1 slot. It creates no predefined KingSplugorf pilot. This mode skips
-the intro missions while leaving the pilot-customization completion flag false;
-saved completion commits from the game are retained on later launches. Name,
-gender and appearance requests are saved, and player cards return saved
-appearance data. Opening and completing the creator still need validation in
-the actual supported Windows game. This does not complete campaign progression.
+Select **Full introduction (experimental)**, click **New character**, then
+**Play** to start a separate empty slot without injected tutorial-completion
+flags. For the earlier creator-to-hub path, select **Fort Tarsis — skip the
+tutorials** instead. See [Full introduction and native validation](INTRODUCTION.md)
+for startup, save/resume behavior and current limits.
 
 Each New character click makes a separate slot. Existing KingSplugorf slots stay
 available in the selector. Profile controls are disabled during startup/gameplay.

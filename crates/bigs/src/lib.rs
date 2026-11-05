@@ -108,7 +108,13 @@ impl Context {
     }
 
     pub fn with_state_file(mut self, path: &str) -> Self {
-        self.state = Arc::new(Mutex::new(state::StateFile::open(path)));
+        let state = state::StateFile::open(path);
+        let introduction = state.full_introduction();
+        self.new_game |= introduction;
+        self.state = Arc::new(Mutex::new(state));
+        if introduction {
+            self = self.with_saved_characters();
+        }
         self
     }
 
@@ -161,6 +167,7 @@ pub fn router(context: Context) -> Router {
 fn service_routes() -> Router<Context> {
     Router::new()
         .route("/progression", get(progression::page))
+        .route("/local/onboarding", get(characters::onboarding))
         .route("/progression.js", get(progression::script))
         .route("/local/progression", get(progression::overview))
         .route(

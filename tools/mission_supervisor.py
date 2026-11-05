@@ -76,7 +76,7 @@ def stop_debugger(child):
 class Supervisor:
     def __init__(self, pid, run_id, debugger, launch_worker, launch_prepare, alive,
                  data=Path('data'), clock=time.monotonic, stop=stop_tree, debugger_stop=stop_debugger, announce=print,
-                 status_callback=lambda _: None):
+                 status_callback=lambda _: None, prepare_initial=False):
         self.pid, self.run_id, self.debugger = pid, run_id, debugger
         self.launch_worker, self.launch_prepare, self.alive = launch_worker, launch_prepare, alive
         self.data, self.clock, self.stop, self.announce = Path(data), clock, stop, announce
@@ -84,6 +84,9 @@ class Supervisor:
         self.status_callback = status_callback
         self.worker = self.preparer = None
         self.worker_generation, self.handled_generation, self.prepared_generation = 0, 0, 0
+        self.prepare_initial = prepare_initial
+        self.prepare_generation = None
+        if prepare_initial: self.prepared_generation = -1
         self.prepare_deadline, self.last_status = None, None
         self.last_phase, self.worker_error, self.prepare_error = None, None, None
         self.lease = Lease(self.data / f'mission_lease_{pid}_{run_id}.bin', run_id)
@@ -116,12 +119,13 @@ class Supervisor:
         if state.get('run_id') != self.run_id:
             return
         phase, generation = state['phase'], state['generation']
+        native_intro = (state.get('mission') or {}).get('origin', '').startswith('native-story-')
         if phase != self.last_phase:
             self.announce(f"Expedition {generation}: {phase} — {state.get('reason', '')}")
             self.last_phase = phase
         if self.worker is not None and (phase != 'active' or generation != self.worker_generation):
             self.cancel_worker()
-        if phase in ('queued', 'starting', 'active'):
+        if phase in ('queued', 'starting', 'active') and not native_intro:
             self.stop(self.preparer)
             self.preparer = None
         if phase == 'active' and generation > self.handled_generation:
@@ -136,16 +140,20 @@ class Supervisor:
                 self.announce(self.worker_error)
             self.stop(self.worker)
             self.worker = None
-        if phase in ('returning', 'idle', 'failed') and generation > self.prepared_generation:
+        preparation_phase = phase in ('returning', 'idle', 'failed') or (
+            self.prepare_initial and self.prepared_generation < 0 and native_intro)
+        if preparation_phase and generation > self.prepared_generation:
             if self.preparer is None:
-                self.preparer = self.launch_prepare(generation)
+                target = 0 if self.prepare_initial and self.prepared_generation < 0 else generation
+                self.preparer = self.launch_prepare(target)
+                self.prepare_generation = target
                 self.prepare_deadline = self.clock() + 120
                 self.prepare_error = None
             elif self.preparer.poll() is not None:
                 code = self.preparer.returncode
                 self.stop(self.preparer)
                 self.preparer = None
-                self.prepared_generation = generation
+                self.prepared_generation = self.prepare_generation
                 if code == 0:
                     self.announce('Launch points refreshed; ready for another expedition')
                 else:
@@ -154,7 +162,7 @@ class Supervisor:
             elif self.clock() >= self.prepare_deadline:
                 self.stop(self.preparer)
                 self.preparer = None
-                self.prepared_generation = generation
+                self.prepared_generation = self.prepare_generation
                 self.prepare_error = 'Launch-point refresh timed out; inspect its preparation log'
                 self.announce(self.prepare_error)
         status = {'schema': 1, 'run_id': self.run_id, 'pid': self.pid, 'phase': phase, 'generation': generation,

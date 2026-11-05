@@ -11,10 +11,12 @@ async function harness({ windows = true } = {}) {
       replaceChildren(...children) { this.children = children; },
       closest() { return this; } };
   }
-  const ids = ["ip", "lan", "jouer", "arreter", "second", "arreter-second", "etat", "journal", "dossier-jeu", "changer-dossier", "choix-profil", "profil", "nouveau-profil", "choix-mode", "ligne-second"];
+  const ids = ["ip", "lan", "jouer", "arreter", "second", "arreter-second", "etat", "journal", "dossier-jeu", "changer-dossier", "choix-profil", "profil", "nouveau-profil", "debut-profil", "choix-mode", "ligne-second"];
   const elements = Object.fromEntries(ids.map((id) => [id, element()]));
   const modes = ["local", "dev", "serveur"].map(element);
   const played = [];
+  const created = [];
+  elements["debut-profil"].value = "tutorial";
   let onState;
   const original = { key: "development", label: "Original save — Level 30" };
   const creator = { key: "creator-new", label: "New character" };
@@ -22,7 +24,11 @@ async function harness({ windows = true } = {}) {
     choix: async () => ({ mode: "local", modes: ["local"], gameFolder: "D:/Anthem", ip: "127.0.0.1",
       profiles: windows ? [original] : undefined, selectedProfile: "development" }),
     jouer: (...args) => played.push(args),
-    nouveauProfil: async () => ({ profiles: [original, creator], selectedProfile: creator.key }),
+    nouveauProfil: async (mode) => {
+      created.push(mode);
+      const entry = mode === "tutorial" ? { key: "tutorial-new", label: "Introduction" } : creator;
+      return { profiles: [original, entry], selectedProfile: entry.key };
+    },
     dossierJeu: async () => "D:/Anthem", second() {}, arreter() {}, surJournal() {},
     surEtat(callback) { onState = callback; },
   };
@@ -31,7 +37,7 @@ async function harness({ windows = true } = {}) {
     window: { lanceur: api },
   });
   await new Promise(setImmediate);
-  return { elements, played, onState, api };
+  return { elements, played, created, onState, api };
 }
 
 test("save selector passes the chosen Original save to Play", async () => {
@@ -46,10 +52,11 @@ test("save selector passes the chosen Original save to Play", async () => {
 test("New character selects its new slot without starting the game or cloning a name", async () => {
   const h = await harness();
   await h.elements["nouveau-profil"].listeners.get("click")();
-  assert.equal(h.elements.profil.value, "creator-new");
+  assert.equal(h.elements.profil.value, "tutorial-new");
+  assert.deepEqual(h.created, ["tutorial"]);
   assert.equal(h.played.length, 0);
   h.elements.jouer.listeners.get("click")();
-  assert.equal(h.played[0][2], "creator-new");
+  assert.equal(h.played[0][2], "tutorial-new");
 });
 
 test("save selection is disabled while a game starts or runs and restored after Stop", async () => {
@@ -58,10 +65,20 @@ test("save selection is disabled while a game starts or runs and restored after 
     h.onState(state);
     assert.equal(h.elements.profil.disabled, true);
     assert.equal(h.elements["nouveau-profil"].disabled, true);
+    assert.equal(h.elements["debut-profil"].disabled, true);
   }
   h.onState({ patches: false, game: false });
   assert.equal(h.elements.profil.disabled, false);
   assert.equal(h.elements.jouer.disabled, false);
+});
+
+test("tutorial skip is explicit when creating a Fort Tarsis character", async () => {
+  const h = await harness();
+  h.elements["debut-profil"].value = "creator";
+  await h.elements["nouveau-profil"].listeners.get("click")();
+  assert.deepEqual(h.created, ["creator"]);
+  assert.equal(h.elements.profil.value, "creator-new");
+  assert.match(h.elements.journal.textContent, /skips the tutorials/);
 });
 
 test("Linux launcher keeps its existing flow with the Windows profile selector hidden", async () => {

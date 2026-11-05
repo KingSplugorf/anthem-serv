@@ -103,7 +103,8 @@ def collect(root, pid, get=fetch):
     bigs, bigs_lines = tail(root / 'data/logs/bigs.log')
     bigs['recent_http_requests'] = [line[:1000] for line in bigs_lines if re.match(r'^(GET|POST|PUT|DELETE|PATCH) /', line)][-50:]
     report['bigs'] = bigs
-    for key, route in (('active_character', '/api/character/1000/characters/active'), ('persistence', '/api/character/1000/persistence')):
+    for key, route in (('active_character', '/api/character/1000/characters/active'), ('persistence', '/api/character/1000/persistence'),
+                       ('onboarding','/local/onboarding')):
         try:
             value = get(route)
             if not isinstance(value, dict):
@@ -117,7 +118,7 @@ def collect(root, pid, get=fetch):
                                  for p in e.get('RegisteredDefPropArray', []) if isinstance(p, dict) and p.get('PropertyId') == prop), None)
                 value = {'element_count': len(elements), 'freeplay_quest_state': property_value(FREEPLAY_DEFINITION, 1),
                          'freeplay_eligibility_flag': property_value(FREEPLAY_GATE_DEFINITION, FREEPLAY_GATE_PROPERTY)}
-            else:
+            elif key == 'active_character':
                 character = value.get('character', {})
                 if not isinstance(character, dict):
                     raise ValueError('Expected a character object')
@@ -137,7 +138,7 @@ def collect(root, pid, get=fetch):
                                   'checked_quest': selected, 'point': table.get('quetes', {}).get(selected)}
     except (OSError, ValueError, TypeError) as error:
         report['quest_points'] = {'error': str(error)}
-    for name in ('mission_state', 'mission_supervisor'):
+    for name in ('mission_state', 'mission_supervisor', 'native_story'):
         path = root / f'data/{name}_{pid}.json'
         try:
             if path.stat().st_size > 1 << 20:

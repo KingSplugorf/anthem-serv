@@ -27,6 +27,17 @@ class MissionDiagnosticsTests(unittest.TestCase):
     def write(self, relative, text):
         (self.root / relative).write_text(text, encoding='utf-8')
 
+    def test_intro_flags_and_native_startup_are_exported_without_mutation(self):
+        self.write('data/native_story_123.json',json.dumps({'pid':123,'state':8,'attributes':[0,2015846446,1,0]}))
+        onboarding={'mode':'full-introduction','heartOfRage':{'completed':False}}
+        def api(route):
+            return onboarding if route=='/local/onboarding' else self.api(route)
+        before={path:path.read_bytes() for path in self.root.rglob('*') if path.is_file()}
+        report=inspect_mission.collect(self.root,123,api)
+        self.assertEqual(report['onboarding'],onboarding)
+        self.assertEqual(report['native_story']['state'],8)
+        self.assertEqual(before,{path:path.read_bytes() for path in self.root.rglob('*') if path.is_file()})
+
     def test_selection_and_ready_do_not_count_as_a_launch_request(self):
         self.write('data/logs/blaze.log', 'ATTR = {"QuestId": "1401555469"}\nATTR = {"Ready": "true"}\n')
         report = inspect_mission.collect(self.root, 123, self.api)

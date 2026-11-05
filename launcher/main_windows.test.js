@@ -94,11 +94,12 @@ async function launcherHarness({ deferReadiness = false, taskkillThrows = false,
     "./windows_profiles": {
       initialProfile: (config, inherited) => inherited.ANTHEM_PROFILE === "fresh" ? `fresh-${inherited.ANTHEM_PROFILE_ID || "pilot-1"}` : config.profileKey || "development",
       listProfiles: () => [{ key: "development", label: "Original save — Level 30" }],
-      newCreatorProfile: () => "creator-new-slot",
+      newCharacterProfile: (_root, _user, _env, mode = "tutorial") => `${mode}-new-slot`,
       localProfile: (_root, userData, inherited, selection) => ({
-      mode: "development", key: selection, state: path.join(userData, "server", "state.json"),
+      mode: selection?.startsWith("tutorial-") ? "tutorial" : "development", key: selection, state: path.join(userData, "server", "state.json"),
       env: { ...inherited, BIGS_ETAT: path.join(userData, "server", "state.json"),
-        BIGS_SAUVEGARDES: path.join(userData, "server", "saves"), BLAZE_CAPTURES: path.join(userData, "server", "captures") },
+        BIGS_SAUVEGARDES: path.join(userData, "server", "saves"), BLAZE_CAPTURES: path.join(userData, "server", "captures"),
+        ...(selection?.startsWith("tutorial-") ? { ANTHEM_STORY_MODE: "1", BIGS_NOUVELLE_PARTIE: "1", ANTHEM_MISSION_LIFECYCLE: "1" } : {}) },
     }) },
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "main_windows.js"), "utf8"), {
@@ -117,6 +118,19 @@ test("Chromium caches use a temporary session directory while settings and saves
   const bigs = harness.spawned.find((item) => item.command === "bigs.exe");
   assert.equal(bigs.options.env.BIGS_ETAT, "/user/server/state.json");
   await harness.ipc.get("arreter")();
+});
+
+test("tutorial profile environment reaches the services, game and mission patcher", async () => {
+  const h = await launcherHarness();
+  await h.ipc.get("jouer")({}, { mode: "local", ip: "127.0.0.1", profileKey: "tutorial-fresh" });
+  const participants = h.spawned.filter(({ command, args }) => ["redirector.exe", "blaze.exe", "bigs.exe"].includes(command) ||
+    command.endsWith("Anthem.exe") || args.some((arg) => arg.endsWith("auto_patches.py")));
+  assert.equal(participants.length, 5);
+  for (const participant of participants) {
+    assert.equal(participant.options.env.ANTHEM_STORY_MODE, "1");
+    assert.equal(participant.options.env.BIGS_NOUVELLE_PARTIE, "1");
+  }
+  assert.equal(participants.find(({ command }) => command === "blaze.exe").options.env.BLAZE_LOCAL_LIFECYCLE, "1");
 });
 
 test("a second launcher exits before creating caches, windows or services", async () => {
@@ -145,7 +159,7 @@ test("a second-instance request focuses the running launcher without stopping it
 test("new-character action selects its separate slot and is refused while playing", async () => {
   const harness = await launcherHarness();
   const selection = await harness.ipc.get("nouveau-profil")();
-  assert.equal(selection.selectedProfile, "creator-new-slot");
+  assert.equal(selection.selectedProfile, "tutorial-new-slot");
   await harness.ipc.get("jouer")(null, { mode: "local", ip: "", profileKey: "development" });
   assert.throws(() => harness.ipc.get("nouveau-profil")(), /Stop the game/);
   await harness.ipc.get("arreter")();
