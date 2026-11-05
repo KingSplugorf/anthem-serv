@@ -132,7 +132,7 @@
     },
     {
       "path": "tools/mission_workers.py",
-      "sha256": "5cac6e1819b6a1b60324ee52bd7c7edb4a7846c6fccc36a927d62b9606d4e666"
+      "sha256": "f987aa204caf8b09cbde0c582f8b8925b359794ec61f4cce36457603a725d38f"
     },
     {
       "path": "tools/windows_debugger.py",
