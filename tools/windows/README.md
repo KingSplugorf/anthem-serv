@@ -301,6 +301,49 @@ source still needs identifying.
 The character-list route has no trailing slash. An unknown route currently
 returns HTTP 200 with `{}`, which is not a character-list response.
 
+### Fresh level-1 pilot in Fort Tarsis
+
+Close the game and launcher before running this from the repository root:
+
+```powershell
+.\tools\windows\play-fresh.ps1 -PilotName 'KingSplugorf' -Gender Male -ProfileId kingsplugorf -LoadLocalCa
+```
+
+This rebuilds BIGS and opens the normal launcher. Click **Play**. `-LoadLocalCa`
+enables the existing experimental local-certificate importer for the supported
+game build; omit it if your executable already accepts the server certificate.
+The script keeps the existing TLS hostname and service ports. If a complete
+`bin/` or release service set takes priority, it backs up that set's BIGS executable
+before installing the new build there.
+
+The fresh slot starts with a saved male pilot named `KingSplugorf`, level 1,
+zero XP, the Ranger and its starter equipment. The development Forge catalog is
+not granted to this slot. It skips the intro using the existing tutorial-complete
+persistence and attempts to enter Fort Tarsis. Name and gender are served by the
+API; the model's appearance and the hub/quest flow still need validation in the
+game. The menu header's `Loading…` placeholder is a separate unresolved issue.
+
+Saves go under the launcher's per-user directory at
+`server/profiles/fresh-kingsplugorf/state.json`; the launcher prints the full path.
+The old `server/state.json` and repository preset are preserved. Run the same
+command to resume this slot. To create another, choose a different `-ProfileId`.
+Name and gender options only initialize a slot; they do not overwrite an existing
+pilot. After closing this launcher, normal `npm start` uses the development save
+unless profile environment variables were already set in the calling shell.
+
+This is a fresh-profile foundation, **not completed retail progression**. Pilot
+level is still manually set; XP is the minimum threshold for that level. Mission
+loot is not retained, currency rewards are placeholders, the recipe catalog is
+empty, and crafting transactions are not implemented. A full progression loop
+requires mission reward/loot handling, persistent XP and currencies, then recipe
+costs, unlock requirements and inventory transactions. Resetting the save alone
+does not supply those systems.
+
+For manual launches, `ANTHEM_PROFILE=fresh`, `ANTHEM_PROFILE_ID`,
+`ANTHEM_PILOT_NAME` and `ANTHEM_PILOT_GENDER` select the slot. The existing
+experimental intro mode is also available as `ANTHEM_PROFILE=tutorial`, with a
+separate save and no precreated pilot; its intro flow is unvalidated.
+
 For a connection error before login, inspect `data/logs/redirector.log`. The
 redirector records the ClientHello's server name, cipher suites and signature
 schemes, then the negotiated TLS version/cipher on success. Failures explicitly

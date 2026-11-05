@@ -158,6 +158,13 @@ impl StateFile {
             .unwrap_or(STARTING_PILOT_LEVEL)
     }
 
+    pub fn starting_inventory_only(&self) -> bool {
+        self.state
+            .get("inventaire_depart_seul")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    }
+
     pub fn set_pilot_level(&mut self, level: u64) {
         self.state.insert(PILOT_LEVEL_KEY.to_owned(), json!(level));
         self.save();

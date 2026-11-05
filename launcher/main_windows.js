@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { IPV4, REDIRECTOR, redirectorAddress } = require("./hosts");
 const windows = require("./windows_runtime");
+const { localProfile } = require("./windows_profiles");
 
 const ROOT = path.resolve(__dirname, "..");
 let window, game, patches;
@@ -133,14 +134,12 @@ async function play(_event, { mode, ip }) {
         binaries = windows.serverBinaries(ROOT);
       }
       if (!binaries) throw new Error("Windows service executables were not found after building");
-      const runtime = path.join(app.getPath("userData"), "server");
-      fs.mkdirSync(runtime, { recursive: true });
-      const state = path.join(runtime, "state.json");
-      if (!fs.existsSync(state)) fs.copyFileSync(path.join(ROOT, "data", "saves", "state.json"), state);
+      const profile = localProfile(ROOT, app.getPath("userData"), process.env);
+      log(`Using ${profile.mode} profile: ${profile.state}`);
       fs.mkdirSync(path.join(ROOT, "data", "logs"), { recursive: true });
       // Use the certificate's DNS identity for TLS, retaining the resolved IP
       // for transport. Advertising the IP as the hostname fails name checks.
-      const env = { ...process.env, LISTEN_HOST: "127.0.0.1", BIGS_ETAT: state, BIGS_SAUVEGARDES: path.join(runtime, "saves"), BLAZE_CAPTURES: path.join(runtime, "captures"), BLAZE_HOST: REDIRECTOR, BLAZE_IP: address, BIGS_URL: `http://${address}:8080` };
+      const env = { ...profile.env, LISTEN_HOST: "127.0.0.1", BLAZE_HOST: REDIRECTOR, BLAZE_IP: address, BIGS_URL: `http://${address}:8080` };
       for (const executable of binaries) {
         ensureActive();
         const name = path.basename(executable, ".exe");

@@ -76,12 +76,25 @@ pub async fn viewed_unlocks(body: Bytes) -> Json<Value> {
     Json(json!({ "unlocks": unlocks }))
 }
 
-pub async fn inventory(State(context): State<Context>) -> Json<Value> {
-    let (salvaged, junk) = {
+fn inventory_items(context: &Context) -> Vec<Value> {
+    let (salvaged, junk, starting_only) = {
         let state = context.state.lock().expect("fichier d'état");
-        (state.salvaged_items(), state.junk_items())
+        (
+            state.salvaged_items(),
+            state.junk_items(),
+            state.starting_inventory_only(),
+        )
     };
-    let items = crate::gear::inventory_items(&owned_exo_types(&context), &salvaged, &junk);
+    crate::gear::inventory_items(&owned_exo_types(context), &salvaged, &junk)
+        .into_iter()
+        .filter(|item| {
+            !starting_only || crate::gear::is_starting_gear(item["uid"].as_u64().unwrap_or(0))
+        })
+        .collect()
+}
+
+pub async fn inventory(State(context): State<Context>) -> Json<Value> {
+    let items = inventory_items(&context);
     Json(json!({
         "totalItemCount": items.len(),
         "items": items,
@@ -274,11 +287,7 @@ fn loadout(context: &Context, exo_type: i32) -> Value {
 
 /// RemoteViewLoadoutDylanOnlineAttachment {Item, AttachedTo, Slot, AttachedToUID, UID, UnlockId, ItemId} de chaque attache du loadout.
 pub fn remote_view_items(context: &Context, exo_type: i32) -> Vec<Value> {
-    let (salvaged, junk) = {
-        let state = context.state.lock().expect("fichier d'état");
-        (state.salvaged_items(), state.junk_items())
-    };
-    let inventory = crate::gear::inventory_items(&owned_exo_types(context), &salvaged, &junk);
+    let inventory = inventory_items(context);
     loadout(context, exo_type)["gear"]["attachments"]
         .as_array()
         .into_iter()

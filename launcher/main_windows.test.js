@@ -81,6 +81,11 @@ async function launcherHarness({ deferReadiness = false, taskkillThrows = false,
     electron: { app, BrowserWindow, dialog: {}, ipcMain: { handle: (name, callback) => ipc.set(name, callback) } },
     "node:child_process": { spawn, execFile }, "node:fs": fileSystem, "node:path": path,
     "./hosts": require("./hosts"), "./windows_runtime": runtime,
+    "./windows_profiles": { localProfile: (_root, userData, inherited) => ({
+      mode: "development", state: path.join(userData, "server", "state.json"),
+      env: { ...inherited, BIGS_ETAT: path.join(userData, "server", "state.json"),
+        BIGS_SAUVEGARDES: path.join(userData, "server", "saves"), BLAZE_CAPTURES: path.join(userData, "server", "captures") },
+    }) },
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "main_windows.js"), "utf8"), {
     require: (name) => { assert.ok(name in modules, name); return modules[name]; },

@@ -67,6 +67,11 @@ impl Context {
     /// terminé ajoutés à la persistance servie.
     pub fn as_new_game(mut self) -> Self {
         self.new_game = true;
+        self.with_saved_characters()
+    }
+
+    /// Load saved pilots while retaining the normal Fort Tarsis tutorial skip.
+    pub fn with_saved_characters(self) -> Self {
         let pilots = self.state.lock().expect("fichier d'état").pilots();
         *self.characters.lock().expect("registre des personnages") = pilots
             .iter()

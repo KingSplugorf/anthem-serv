@@ -1,0 +1,76 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { localProfile } = require("./windows_profiles");
+
+function fixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "anthem-profile-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "data", "saves"), { recursive: true });
+  const preset = JSON.stringify({ niveau_pilote: 30, pilotes: [{ id: 1, name: "Original" }] });
+  fs.writeFileSync(path.join(root, "data", "saves", "state.json"), preset);
+  return { root, user: path.join(root, "user"), preset };
+}
+
+test("fresh male pilot starts at level 1 and preserves both development saves", (t) => {
+  const { root, user, preset } = fixture(t);
+  const development = localProfile(root, user, {});
+  const inherited = { ANTHEM_PROFILE: "fresh", ANTHEM_PROFILE_ID: "kingsplugorf", ANTHEM_PILOT_NAME: "KingSplugorf", ANTHEM_PILOT_GENDER: "Male", BIGS_NOUVELLE_PARTIE: "1", BIGS_SANS_PERSONNAGE: "1", BIGS_PERSISTANCE: "{}", BIGS_PERSONNAGE_ID: "99", ANTHEM_LOAD_LOCAL_CA: "1" };
+  const profile = localProfile(root, user, inherited);
+  assert.notEqual(profile.state, development.state);
+  assert.deepEqual(JSON.parse(fs.readFileSync(profile.state)), {
+    niveau_pilote: 1, inventaire_depart_seul: true, pilotes: [{ id: 1, name: "KingSplugorf", gender: "Male", appearance: "" }],
+  });
+  assert.equal(profile.env.BIGS_PILOTES_SAUVEGARDES, "1");
+  assert.equal(profile.env.JOUEUR_NOM, "KingSplugorf");
+  assert.equal(profile.env.ANTHEM_LOAD_LOCAL_CA, "1");
+  for (const key of ["BIGS_NOUVELLE_PARTIE", "BIGS_SANS_PERSONNAGE", "BIGS_PERSISTANCE", "BIGS_PERSONNAGE_ID"]) assert.equal(profile.env[key], undefined);
+  assert.equal(inherited.BIGS_NOUVELLE_PARTIE, "1");
+  assert.equal(fs.readFileSync(development.state, "utf8"), preset);
+  assert.equal(fs.readFileSync(path.join(root, "data", "saves", "state.json"), "utf8"), preset);
+});
+
+test("relaunch resumes saved progress and a different slot gets a new pilot", (t) => {
+  const { root, user } = fixture(t);
+  const env = { ANTHEM_PROFILE: "fresh", ANTHEM_PILOT_NAME: "KingSplugorf" };
+  const profile = localProfile(root, user, env);
+  const saved = JSON.parse(fs.readFileSync(profile.state));
+  saved.niveau_pilote = 7;
+  saved.pilotes[0].name = "Saved name";
+  saved.persistence = [{ DefinitionId: 12 }];
+  const bytes = JSON.stringify(saved);
+  fs.writeFileSync(profile.state, bytes);
+  assert.equal(localProfile(root, user, env).state, profile.state);
+  assert.equal(fs.readFileSync(profile.state, "utf8"), bytes);
+  const other = localProfile(root, user, { ...env, ANTHEM_PROFILE_ID: "pilot-2" });
+  assert.notEqual(profile.state, other.state);
+  assert.equal(JSON.parse(fs.readFileSync(other.state)).niveau_pilote, 1);
+});
+
+test("tutorial profile uses a different slot with no precreated pilot", (t) => {
+  const { root, user } = fixture(t);
+  const fresh = localProfile(root, user, { ANTHEM_PROFILE: "fresh" });
+  const tutorial = localProfile(root, user, { ANTHEM_PROFILE: "tutorial" });
+  assert.notEqual(fresh.state, tutorial.state);
+  assert.deepEqual(JSON.parse(fs.readFileSync(tutorial.state)).pilotes, []);
+  assert.equal(tutorial.env.BIGS_NOUVELLE_PARTIE, "1");
+});
+
+test("invalid input and damaged saves are rejected without replacing progress", (t) => {
+  const { root, user } = fixture(t);
+  for (const env of [
+    { ANTHEM_PROFILE: "typo" },
+    { ANTHEM_PROFILE: "fresh", ANTHEM_PROFILE_ID: "../state" },
+    { ANTHEM_PROFILE: "fresh", ANTHEM_PILOT_NAME: "   " },
+    { ANTHEM_PROFILE: "fresh", ANTHEM_PILOT_GENDER: "typo" },
+  ]) assert.throws(() => localProfile(root, user, env));
+  const env = { ANTHEM_PROFILE: "fresh" };
+  const profile = localProfile(root, user, env);
+  for (const bytes of ["broken JSON", "{}", '{"niveau_pilote":0,"pilotes":[]}']) {
+    fs.writeFileSync(profile.state, bytes);
+    assert.throws(() => localProfile(root, user, env), /profile save/);
+    assert.equal(fs.readFileSync(profile.state, "utf8"), bytes);
+  }
+});
