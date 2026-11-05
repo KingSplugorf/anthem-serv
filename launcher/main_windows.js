@@ -2,7 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const { spawn, execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { IPV4, redirectorAddress } = require("./hosts");
+const { IPV4, REDIRECTOR, redirectorAddress } = require("./hosts");
 const windows = require("./windows_runtime");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -138,7 +138,9 @@ async function play(_event, { mode, ip }) {
       const state = path.join(runtime, "state.json");
       if (!fs.existsSync(state)) fs.copyFileSync(path.join(ROOT, "data", "saves", "state.json"), state);
       fs.mkdirSync(path.join(ROOT, "data", "logs"), { recursive: true });
-      const env = { ...process.env, LISTEN_HOST: "127.0.0.1", BIGS_ETAT: state, BIGS_SAUVEGARDES: path.join(runtime, "saves"), BLAZE_CAPTURES: path.join(runtime, "captures"), BLAZE_HOST: address, BLAZE_IP: address, BIGS_URL: `http://${address}:8080` };
+      // Use the certificate's DNS identity for TLS, retaining the resolved IP
+      // for transport. Advertising the IP as the hostname fails name checks.
+      const env = { ...process.env, LISTEN_HOST: "127.0.0.1", BIGS_ETAT: state, BIGS_SAUVEGARDES: path.join(runtime, "saves"), BLAZE_CAPTURES: path.join(runtime, "captures"), BLAZE_HOST: REDIRECTOR, BLAZE_IP: address, BIGS_URL: `http://${address}:8080` };
       for (const executable of binaries) {
         ensureActive();
         const name = path.basename(executable, ".exe");

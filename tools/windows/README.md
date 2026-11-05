@@ -2,9 +2,11 @@
 
 This is the first native Windows port of the **local, single-game** workflow.
 It does not use WSL, Wine, Proton, Bash, or GDB on Windows. It is developer
-setup, not a packaged end-user installer. Windows execution and gameplay have
-not yet been validated; the automated tests run on Linux with simulated Win32
-APIs and real Linux service requests.
+setup, not a packaged end-user installer. On-device reports have confirmed native
+Windows CA registration and the game's TLS/HTTP request to the redirector for
+the inspected build. End-to-end login and gameplay still need validation. The
+automated tests run on Linux with simulated Win32 APIs and real Linux service
+requests.
 
 ## Prerequisites
 
@@ -48,6 +50,13 @@ outside the launcher default to IPv4 on Windows and retain the existing IPv6
 default on Linux; `LISTEN_HOST` overrides the interface. Rebuild all three service
 executables after updating their Rust source; restarting Electron alone does not
 replace previously built binaries.
+The redirector advertises Blaze's hostname as `spring18.gosredirector.ea.com`,
+matching the development certificate, with resolved IP `127.0.0.1` and port
+`10041`. The existing hosts entry resolves that name to the same machine for
+both TLS services. Advertising `127.0.0.1` as the hostname instead can fail the
+game's certificate hostname check even after the CA was imported. The launcher's
+probes use the certificate DNS name too, so they did not catch the old advertised
+hostname mismatch.
 **Stop** and closing the launcher stop only its own process trees; stopping during
 startup cancels the pending game launch.
 
@@ -114,8 +123,9 @@ An opt-in experimental CA-registration path is available for this exact build;
 see [Experimental local CA registration](#experimental-local-ca-registration).
 It preserves certificate verification and imports only the public development
 certificate. The function identity is based on the inspected machine code;
-actual Windows execution and login still need validation. Static CA-loading
-code alone does not prove the connection failure is caused by certificate trust.
+on-device execution has returned a positive import count and a clean debugger
+detach. Login and gameplay still need validation. Static CA-loading code alone
+does not prove the connection failure is caused by certificate trust.
 
 The first report located a PEM marker parser at `0x147d65270`, its marker table
 at `0x143732520`, and an original entry stub at `0x140823370` that jumps to the
@@ -152,8 +162,9 @@ The supplied TLS bundle shows a two-argument CA importer at `0x147d6abc0`
 the self-signed-CA path, and copies public identity/key data into the CA list at
 `0x1442f29c0`. A game HTTP initializer calls this importer for embedded PEM
 certificates. The inspected TLS connect entry at `0x147d8fe90` has integer and
-pointer arguments following the Microsoft x64 ABI. These are static findings,
-not confirmation that this path handles the failing connection at runtime.
+pointer arguments following the Microsoft x64 ABI. These entries were identified
+statically; a subsequent runtime report confirmed the CA import before the
+redirector connection.
 
 `tools/windows_ca_loader.py` integrates with the native debugger to attempt
 registration before a secure local connection. It checks the executable SHA-256,
@@ -191,6 +202,15 @@ and the debugger detached. A positive native result counts certificates added;
 zero means no new certificate was added (either a duplicate or an allocation
 failure) and is treated as unconfirmed; a negative result is rejection/failure.
 
+An on-device report for this build recorded `native_result: 1`, `loaded: true`,
+`completed: true`, and `detached: true` before connecting to the redirector on
+42230. Server logs then showed the game's TLS 1.2 connection and real
+`anthem-1-pc` redirector request. Blaze on 10041 still received the client's
+`CertificateUnknown` alert while it was advertised by IP. The inspected receive
+certificate code sends alert 46 from its hostname-match failure path, consistent
+with the launcher/certificate name mismatch corrected above. Validation against
+the game after that hostname change remains pending.
+
 The report is `data/local_ca_PID.json`; the log is
 `data/logs/windows_ca_loader.log`. Reports include the public certificate's DER
 SHA-256, observed host/port metadata, native result and detach status. They do
@@ -202,8 +222,9 @@ alone also does not establish that login or mission startup works.
 The generated call stub has a native Linux x64 regression using synthetic
 Microsoft-ABI functions that clobber volatile registers/SSE state. The broader
 suite checks rejection, scoping, allocation protection, readiness correlation,
-and debugger cleanup with simulated Win32 APIs. Actual Windows API calls and
-the game's importer are still unverified. Leave the opt-in flag unset to retain
+and debugger cleanup with simulated Win32 APIs. The runtime report confirms
+successful registration on one Windows setup; full login/gameplay and broader
+Windows compatibility are still unverified. Leave the opt-in flag unset to retain
 the normal launch workflow.
 
 ## Patching and debugger changes

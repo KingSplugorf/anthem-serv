@@ -102,6 +102,8 @@ test("Windows launcher starts native services, the game and Python patches, then
   assert.ok(harness.spawned.every((item) => item.options.shell === false));
   for (const service of harness.spawned.filter((item) => ["redirector.exe", "blaze.exe", "bigs.exe"].includes(item.command))) {
     assert.equal(service.options.env.LISTEN_HOST, "127.0.0.1");
+    assert.equal(service.options.env.BLAZE_HOST, "spring18.gosredirector.ea.com");
+    assert.equal(service.options.env.BLAZE_IP, "127.0.0.1");
   }
   await harness.ipc.get("arreter")();
   assert.equal(harness.killed[0], game.child.pid);
