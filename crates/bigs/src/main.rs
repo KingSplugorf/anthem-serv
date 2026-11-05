@@ -57,7 +57,8 @@ async fn main() -> std::io::Result<()> {
     } else {
         context
     };
-    let listener = TcpListener::bind(("::", port)).await?;
-    println!("bigs sur {port}");
+    let listen_host = env_or("LISTEN_HOST", if cfg!(windows) { "0.0.0.0" } else { "::" });
+    let listener = TcpListener::bind((listen_host.as_str(), port)).await?;
+    println!("bigs sur {listen_host}:{port}");
     axum::serve(listener, router(context)).await
 }

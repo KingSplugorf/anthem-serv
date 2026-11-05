@@ -71,6 +71,9 @@ test("Windows launcher starts native services, the game and Python patches, then
   assert.equal(patches.args.at(-1), String(game.child.pid));
   assert.equal(harness.spawned.some((item) => /bash|proton|gdb|pkexec/.test(item.command)), false);
   assert.ok(harness.spawned.every((item) => item.options.shell === false));
+  for (const service of harness.spawned.filter((item) => ["redirector.exe", "blaze.exe", "bigs.exe"].includes(item.command))) {
+    assert.equal(service.options.env.LISTEN_HOST, "127.0.0.1");
+  }
   await harness.ipc.get("arreter")();
   assert.equal(harness.killed[0], game.child.pid);
   assert.equal(new Set(harness.killed).size, 5);

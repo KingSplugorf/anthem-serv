@@ -133,7 +133,7 @@ async function play(_event, { mode, ip }) {
       const state = path.join(runtime, "state.json");
       if (!fs.existsSync(state)) fs.copyFileSync(path.join(ROOT, "data", "saves", "state.json"), state);
       fs.mkdirSync(path.join(ROOT, "data", "logs"), { recursive: true });
-      const env = { ...process.env, BIGS_ETAT: state, BIGS_SAUVEGARDES: path.join(runtime, "saves"), BLAZE_CAPTURES: path.join(runtime, "captures"), BLAZE_HOST: address, BLAZE_IP: address, BIGS_URL: `http://${address}:8080` };
+      const env = { ...process.env, LISTEN_HOST: "127.0.0.1", BIGS_ETAT: state, BIGS_SAUVEGARDES: path.join(runtime, "saves"), BLAZE_CAPTURES: path.join(runtime, "captures"), BLAZE_HOST: address, BLAZE_IP: address, BIGS_URL: `http://${address}:8080` };
       for (const executable of binaries) {
         ensureActive();
         const name = path.basename(executable, ".exe");

@@ -42,6 +42,12 @@ The launcher finds all three service executables together in `bin`,
 with Cargo. It verifies BIGS's configuration response, the redirector's TLS/XML
 response, and Blaze's TLS/Fire2 ping before starting the game directly with
 `-alwaysoffline`. Patch tools run through the local Python virtual environment.
+Local services explicitly listen on IPv4 loopback (`LISTEN_HOST=127.0.0.1`),
+matching the launcher's probes and advertised game endpoints. Services started
+outside the launcher default to IPv4 on Windows and retain the existing IPv6
+default on Linux; `LISTEN_HOST` overrides the interface. Rebuild all three service
+executables after updating their Rust source; restarting Electron alone does not
+replace previously built binaries.
 **Stop** and closing the launcher stop only its own process trees; stopping during
 startup cancels the pending game launch.
 

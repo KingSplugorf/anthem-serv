@@ -275,7 +275,8 @@ async fn main() -> std::io::Result<()> {
             .parse()
             .expect("BLAZE_DELAI_NOTIFICATIONS_MS : délai en millisecondes avant chaque notification GameManager"),
     );
-    let listener = TcpListener::bind(("::", port)).await?;
+    let listen_host = env_or("LISTEN_HOST", if cfg!(windows) { "0.0.0.0" } else { "::" });
+    let listener = TcpListener::bind((listen_host.as_str(), port)).await?;
     let hub_command_file = PathBuf::from(env_or("BLAZE_COMMANDE_HUB", "data/hub_command"));
     println!(
         "blaze sur {port}, missions en pair hébergé : {}, escouade automatique : {}, hub partagé : {}, personas par adresse : {:?}",

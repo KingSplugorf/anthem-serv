@@ -62,10 +62,11 @@ async fn main() -> std::io::Result<()> {
     let config = load_config();
     let acceptor = tls::acceptor_from_pem(&config.certificate, &config.private_key);
     let response_body = Arc::new(render_server_instance(&config.blaze));
-    let listener = TcpListener::bind(("::", config.listen_port)).await?;
+    let listen_host = env_or("LISTEN_HOST", if cfg!(windows) { "0.0.0.0" } else { "::" });
+    let listener = TcpListener::bind((listen_host.as_str(), config.listen_port)).await?;
     println!(
-        "redirector sur {} -> Blaze {}:{}",
-        config.listen_port, config.blaze.hostname, config.blaze.port
+        "redirector sur {}:{} -> Blaze {}:{}",
+        listen_host, config.listen_port, config.blaze.hostname, config.blaze.port
     );
     loop {
         let (socket, peer) = listener.accept().await?;
