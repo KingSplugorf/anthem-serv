@@ -301,7 +301,43 @@ source still needs identifying.
 The character-list route has no trailing slash. An unknown route currently
 returns HTTP 200 with `{}`, which is not a character-list response.
 
-### Fresh level-1 pilot in Fort Tarsis
+### Select a save or create a character
+
+The Windows launcher has a **Character / save** selector. **Original save** reads
+the existing `server/state.json` in the launcher's per-user application directory;
+its displayed level comes from that file. Fresh/creator slots remain separate
+under `server/profiles/`. Switching selections does not copy, reset or replace
+the original save. Stop the game before selecting another slot and clicking Play.
+
+To force selection of the original save even when an earlier shell command set
+fresh-profile environment variables, close the game/launcher and run:
+
+```powershell
+.\tools\windows\play-profile.ps1 -Profile Development -LoadLocalCa
+```
+
+Click **New character**, then **Play**, to test the in-game creator in a new,
+empty level-1 slot. It creates no predefined KingSplugorf pilot. This mode skips
+the intro missions while leaving the pilot-customization completion flag false;
+saved completion commits from the game are retained on later launches. Name,
+gender and appearance requests are saved, and player cards return saved
+appearance data. Opening and completing the creator still need validation in
+the actual supported Windows game. This does not complete campaign progression.
+
+Each New character click makes a separate slot. Existing KingSplugorf slots stay
+available in the selector. Profile controls are disabled during startup/gameplay.
+Plain `npm start` remembers the last played selection unless a profile environment
+variable explicitly chooses a different default. A selection made in the window
+overrides that default for the next Play action. Only the Windows launcher exposes
+these controls; the Linux launcher retains its existing flow.
+
+The `play-profile.ps1` helper rebuilds BIGS, preserves any replaced binary, and
+starts the normal launcher. `-Profile Creator` also selects an empty creator slot
+from the command line; `-ProfileId` chooses its independent save slot. The existing
+`play-fresh.ps1` command is a compatibility wrapper for a pre-created pilot and
+now requires `play-profile.ps1` alongside it.
+
+### Pre-created level-1 pilot in Fort Tarsis
 
 Close the game and launcher before running this from the repository root:
 
@@ -328,8 +364,7 @@ Saves go under the launcher's per-user directory at
 The old `server/state.json` and repository preset are preserved. Run the same
 command to resume this slot. To create another, choose a different `-ProfileId`.
 Name and gender options only initialize a slot; they do not overwrite an existing
-pilot. After closing this launcher, normal `npm start` uses the development save
-unless profile environment variables were already set in the calling shell.
+pilot. Use **Original save** in the launcher to return to the previous pilot.
 
 This is a fresh-profile foundation, **not completed retail progression**. Pilot
 level is still manually set; XP is the minimum threshold for that level. Mission
@@ -368,6 +403,18 @@ starts the internal server, and the mission debugger applies `GameStartingInfo`
 and the quest's root-level launch point. Freeplay uses this same path; its catalog
 quest ID is `1401555469`. Choosing a quest and setting `Ready=true` are earlier
 steps and do not establish that a launch request was sent.
+
+Windows now matches the Linux `tools/start.sh` default
+`BLAZE_SERVEUR_MISSION_ID=2000000`. Blaze advertises a distinct dedicated mission
+host instead of the local pilot as its own peer host, so the client can enter the
+join path intercepted by `launch_from_hub.py`. The advertised identity is a
+protocol role; no extra game-server process is started. An explicit environment
+override is retained (including an empty value, which disables the dedicated
+identity). One Windows report showed a valid request for quest `680915601` and
+mission game `2` finalized, but only the debugger's attach entry and no connection
+hook activity. That request already used string values, so the numeric-parser
+fix was not its blocker. The missing startup setting is a concrete port mismatch;
+its effect on the actual game still requires an on-device retry.
 
 With the launcher/game still running, attempt the launch, then in a second
 PowerShell window run from the repository root:

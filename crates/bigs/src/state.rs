@@ -126,6 +126,22 @@ impl StateFile {
         elements
     }
 
+    pub fn served_creator_persistence(&self) -> Vec<Value> {
+        let mut elements = tutorial_completed_elements();
+        // The game owns completion of customization; a saved completion commit
+        // wins on subsequent launches, including after naming/appearance edits.
+        merge(
+            &mut elements,
+            &[registered_element(
+                PILOT_CREATION,
+                PILOT_CREATED,
+                json!(false),
+            )],
+        );
+        merge(&mut elements, &self.saved_persistence());
+        elements
+    }
+
     pub fn bought_offers(&self) -> Vec<String> {
         self.list(BOUGHT_OFFERS_KEY)
             .iter()

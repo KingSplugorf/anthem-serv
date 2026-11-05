@@ -69,6 +69,22 @@ class MissionDiagnosticsTests(unittest.TestCase):
         self.assertEqual(report['bigs']['recent_http_requests'], ['GET /api/playercard/ -> 200'])
         self.assertNotIn('private body', json.dumps(report))
 
+    def test_game_setup_summary_distinguishes_local_peer_from_separate_dedicated_host(self):
+        def setup(host, topology):
+            return ('127.0.0.1:1 -> Notification 0x0004/0x0014 n°0 (100 octets)\n'
+                    f'GAME {{\n  GID = 2\n  NTOP = {topology}\n  THST {{\n    HPID = {host}\n  }}\n'
+                    f'  DHST {{\n    HPID = {host}\n  }}\n}}\n'
+                    'PROS = [{NAME = "KingSplugorf", PID = 1000, PNET = union(2) VALU = { IP = 1 }, STAT = 4, UID = 1000}]\n'
+                    'REAS = union(3) MMSC = { RSLT = 1 }\n')
+        lines = (setup(1000, 0) + '127.0.0.1:1 <- GameManager next\n' + setup(2000000, 1)).splitlines()
+        result = inspect_mission.latest_setup(lines)
+        self.assertEqual(result['game_id'], 2)
+        self.assertEqual(result['network_topology'], 1)
+        self.assertEqual(result['topology_host_persona'], 2000000)
+        self.assertEqual(result['dedicated_host_persona'], 2000000)
+        self.assertEqual(result['setup_reason_result'], 1)
+        self.assertEqual(result['players'], [{'persona_id': 1000, 'display_name': 'KingSplugorf', 'state': 4}])
+
 
 if __name__ == '__main__':
     unittest.main()

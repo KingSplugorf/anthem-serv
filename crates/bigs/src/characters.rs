@@ -295,7 +295,7 @@ fn remote_view_entry(context: &Context) -> Value {
             "activeCharacterLevel": level,
             "activeCharacterXp": xp_for_level(level),
             "activeCharacterGender": character.gender,
-            "activeCharacterAppearanceData": "",
+            "activeCharacterAppearanceData": character.appearance,
         },
         "playercard": {
             "personaId": context.persona_id,

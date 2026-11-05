@@ -13,6 +13,7 @@
   label { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
   input[type=text] { flex: 1; background: var(--fond); color: var(--texte); border: 1px solid #333b46; border-radius: 4px; padding: 6px 8px; }
   input[type=text]:disabled { opacity: .4; }
+  select { width: 100%; background: var(--fond); color: var(--texte); border: 1px solid #333b46; padding: 8px; margin-bottom: 8px; }
   .actions { display: flex; gap: 10px; margin-bottom: 10px; }
   button { flex: 1; padding: 12px; border: 0; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; }
   #jouer { background: var(--accent); color: #111; }
@@ -39,6 +40,12 @@
 <div class="carte">
   <div class="titre">Game folder</div>
   <div class="dossier"><span id="dossier-jeu" class="doux"></span><button id="changer-dossier" class="petit">Change</button></div>
+</div>
+<div class="carte" id="choix-profil" hidden>
+  <div class="titre">Character / save</div>
+  <select id="profil" aria-label="Character or save"></select>
+  <button id="nouveau-profil" class="petit">New character</button>
+  <p class="doux">Choose Original save to return to your previous pilot. New character opens the experimental in-game creator in a separate save.</p>
 </div>
 <div class="actions">
   <button id="jouer">Play</button>

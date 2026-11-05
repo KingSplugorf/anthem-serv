@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { localProfile } = require("./windows_profiles");
+const { localProfile, initialProfile, listProfiles, newCreatorProfile } = require("./windows_profiles");
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "anthem-profile-"));
@@ -58,6 +58,53 @@ test("tutorial profile uses a different slot with no precreated pilot", (t) => {
   assert.equal(tutorial.env.BIGS_NOUVELLE_PARTIE, "1");
 });
 
+test("explicit Original selection escapes inherited fresh/creator flags and returns the old save unchanged", (t) => {
+  const { root, user, preset } = fixture(t);
+  const original = localProfile(root, user, {});
+  const inherited = { ANTHEM_PROFILE: "fresh", ANTHEM_PROFILE_ID: "kingsplugorf", BIGS_CREATION_PERSONNAGE: "1", BIGS_NOUVELLE_PARTIE: "1", BIGS_SANS_PERSONNAGE: "1", ANTHEM_LOAD_LOCAL_CA: "1" };
+  const fresh = localProfile(root, user, inherited);
+  const restored = localProfile(root, user, inherited, "development");
+  assert.equal(restored.state, original.state);
+  assert.equal(fs.readFileSync(original.state, "utf8"), preset);
+  assert.equal(JSON.parse(fs.readFileSync(fresh.state)).niveau_pilote, 1);
+  assert.equal(restored.env.ANTHEM_PROFILE, "development");
+  assert.equal(restored.env.ANTHEM_LOAD_LOCAL_CA, "1");
+  for (const key of ["BIGS_CREATION_PERSONNAGE", "BIGS_NOUVELLE_PARTIE", "BIGS_SANS_PERSONNAGE", "BIGS_PILOTES_SAUVEGARDES"]) assert.equal(restored.env[key], undefined);
+});
+
+test("New character makes independent empty slots rather than cloning the inherited KingSplugorf preset", (t) => {
+  const { root, user } = fixture(t);
+  const inherited = { ANTHEM_PROFILE: "fresh", ANTHEM_PILOT_NAME: "KingSplugorf" };
+  const first = newCreatorProfile(root, user, inherited);
+  const second = newCreatorProfile(root, user, inherited);
+  assert.notEqual(first, second);
+  for (const key of [first, second]) {
+    const profile = localProfile(root, user, inherited, key);
+    assert.deepEqual(JSON.parse(fs.readFileSync(profile.state)).pilotes, []);
+    assert.equal(profile.env.BIGS_CREATION_PERSONNAGE, "1");
+    assert.equal(profile.env.BIGS_NOUVELLE_PARTIE, undefined);
+    assert.equal(profile.env.JOUEUR_NOM, "Freelancer");
+  }
+  const entries = listProfiles(user);
+  assert.ok(entries.some((entry) => entry.key === "development"));
+  assert.ok(entries.some((entry) => entry.key === first));
+  assert.ok(entries.some((entry) => entry.key === second));
+});
+
+test("profile listing shows saved names and levels without creating or changing files", (t) => {
+  const { root, user } = fixture(t);
+  localProfile(root, user, {});
+  localProfile(root, user, { ANTHEM_PROFILE: "fresh", ANTHEM_PILOT_NAME: "KingSplugorf" });
+  const before = fs.readFileSync(path.join(user, "server", "state.json"), "utf8");
+  const entries = listProfiles(user, "creator-not-created");
+  assert.match(entries.find((entry) => entry.key === "development").label, /Level 30/);
+  assert.match(entries.find((entry) => entry.key === "fresh-pilot-1").label, /KingSplugorf.*Level 1/);
+  assert.equal(fs.existsSync(path.join(user, "server", "profiles", "creator-not-created")), false);
+  assert.equal(fs.readFileSync(path.join(user, "server", "state.json"), "utf8"), before);
+  assert.equal(initialProfile({ profileKey: "creator-not-created" }, {}), "creator-not-created");
+  assert.equal(initialProfile({ profileKey: "creator-not-created" }, { ANTHEM_PROFILE: "development" }), "development");
+});
+
 test("invalid input and damaged saves are rejected without replacing progress", (t) => {
   const { root, user } = fixture(t);
   for (const env of [
@@ -73,4 +120,12 @@ test("invalid input and damaged saves are rejected without replacing progress", 
     assert.throws(() => localProfile(root, user, env), /profile save/);
     assert.equal(fs.readFileSync(profile.state, "utf8"), bytes);
   }
+});
+
+test("a damaged Original save is rejected rather than silently reset", (t) => {
+  const { root, user } = fixture(t);
+  const original = localProfile(root, user, {});
+  fs.writeFileSync(original.state, "damaged original");
+  assert.throws(() => localProfile(root, user, { ANTHEM_PROFILE: "fresh" }, "development"), /original save/);
+  assert.equal(fs.readFileSync(original.state, "utf8"), "damaged original");
 });

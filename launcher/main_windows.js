@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { IPV4, REDIRECTOR, redirectorAddress } = require("./hosts");
 const windows = require("./windows_runtime");
-const { localProfile } = require("./windows_profiles");
+const { localProfile, initialProfile, listProfiles, newCreatorProfile } = require("./windows_profiles");
 
 if (!app.requestSingleInstanceLock()) {
   console.error("Anthem Launcher is already running. Close it before selecting a different profile.");
@@ -123,10 +123,11 @@ async function chooseFolder() {
   return settings().gameExe ? path.dirname(settings().gameExe) : null;
 }
 
-async function play(_event, { mode, ip }) {
+async function play(_event, { mode, ip, profileKey }) {
   if (starting || game || patches) return;
   if (!["local", "serveur"].includes(mode)) throw new Error("Unsupported Windows mode");
   const config = settings();
+  const selectedProfile = profileKey === undefined ? initialProfile(config, process.env) : profileKey;
   const launch = windows.gameLaunch(config.gameExe);
   const address = mode === "local" ? "127.0.0.1" : String(ip).trim();
   if (!IPV4.test(address)) throw new Error("Enter a valid server IPv4 address");
@@ -153,12 +154,15 @@ async function play(_event, { mode, ip }) {
         binaries = windows.serverBinaries(ROOT);
       }
       if (!binaries) throw new Error("Windows service executables were not found after building");
-      const profile = localProfile(ROOT, app.getPath("userData"), process.env);
+      const profile = localProfile(ROOT, app.getPath("userData"), process.env, selectedProfile);
       log(`Using ${profile.mode} profile: ${profile.state}`);
       fs.mkdirSync(path.join(ROOT, "data", "logs"), { recursive: true });
       // Use the certificate's DNS identity for TLS, retaining the resolved IP
       // for transport. Advertising the IP as the hostname fails name checks.
-      const env = { ...profile.env, LISTEN_HOST: "127.0.0.1", BLAZE_HOST: REDIRECTOR, BLAZE_IP: address, BIGS_URL: `http://${address}:8080` };
+      // Match tools/start.sh: a distinct dedicated identity makes the game take
+      // ClientJoinMultiplayer, where launch_from_hub redirects it to InProc.
+      const env = { ...profile.env, LISTEN_HOST: "127.0.0.1", BLAZE_HOST: REDIRECTOR, BLAZE_IP: address,
+        BLAZE_SERVEUR_MISSION_ID: process.env.BLAZE_SERVEUR_MISSION_ID ?? "2000000", BIGS_URL: `http://${address}:8080` };
       for (const executable of binaries) {
         ensureActive();
         const name = path.basename(executable, ".exe");
@@ -189,7 +193,7 @@ async function play(_event, { mode, ip }) {
       await completed("powershell.exe", windows.elevatedHostsCommand(address));
     }
     ensureActive();
-    saveSettings({ ...config, mode, ip: address });
+    saveSettings({ ...config, mode, ip: address, profileKey: selectedProfile });
     game = start(launch.command, launch.args, { cwd: launch.cwd, windowsHide: false });
     await launched(game);
     ensureActive();
@@ -223,14 +227,22 @@ async function play(_event, { mode, ip }) {
 }
 
 app.whenReady().then(() => {
-  window = new BrowserWindow({ width: 560, height: 640, title: "Anthem Launcher", autoHideMenuBar: true,
+  window = new BrowserWindow({ width: 560, height: 760, title: "Anthem Launcher", autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true } });
   window.on("closed", () => { window = null; });
   ipcMain.handle("choix", () => {
     const config = settings();
     let redirector = null;
     try { redirector = redirectorAddress(fs.readFileSync(windows.hostsPath(), "utf8")); } catch {}
-    return { ...config, modes: ["local"], lan: windows.lanAddress(), gameFolder: config.gameExe ? path.dirname(config.gameExe) : null, redirector };
+    const selectedProfile = initialProfile(config, process.env);
+    return { ...config, modes: ["local"], lan: windows.lanAddress(), gameFolder: config.gameExe ? path.dirname(config.gameExe) : null, redirector,
+      profiles: listProfiles(app.getPath("userData"), selectedProfile), selectedProfile };
+  });
+  ipcMain.handle("nouveau-profil", () => {
+    if (starting || game || patches || services.length) throw new Error("Stop the game before creating a new character.");
+    const key = newCreatorProfile(ROOT, app.getPath("userData"), process.env);
+    saveSettings({ ...settings(), profileKey: key });
+    return { profiles: listProfiles(app.getPath("userData"), key), selectedProfile: key };
   });
   ipcMain.handle("dossier-jeu", () => chooseFolder().catch((error) => { log(error.message); return null; }));
   ipcMain.handle("jouer", (event, args) => play(event, args).catch((error) => log(error.message)));

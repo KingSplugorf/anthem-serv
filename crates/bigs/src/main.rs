@@ -49,6 +49,8 @@ async fn main() -> std::io::Result<()> {
     };
     let context = if env::var("BIGS_NOUVELLE_PARTIE").is_ok() {
         context.as_new_game()
+    } else if env::var("BIGS_CREATION_PERSONNAGE").is_ok() {
+        context.as_character_creator()
     } else if env::var("BIGS_PILOTES_SAUVEGARDES").is_ok() {
         context.with_saved_characters()
     } else {

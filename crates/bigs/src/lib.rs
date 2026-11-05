@@ -35,6 +35,7 @@ pub struct Context {
     cosmetics: Arc<Vec<Value>>,
     weapon_damage: Arc<Mutex<weapon_damage::WeaponDamage>>,
     new_game: bool,
+    character_creator: bool,
 }
 
 impl Context {
@@ -52,6 +53,7 @@ impl Context {
             cosmetics: Arc::new(Vec::new()),
             weapon_damage: Arc::new(Mutex::new(weapon_damage::WeaponDamage::empty())),
             new_game: false,
+            character_creator: false,
         }
     }
 
@@ -67,6 +69,12 @@ impl Context {
     /// terminé ajoutés à la persistance servie.
     pub fn as_new_game(mut self) -> Self {
         self.new_game = true;
+        self.with_saved_characters()
+    }
+
+    /// Skip the intro missions without claiming that pilot customization is complete.
+    pub fn as_character_creator(mut self) -> Self {
+        self.character_creator = true;
         self.with_saved_characters()
     }
 
@@ -452,6 +460,8 @@ async fn persistence(State(context): State<Context>) -> axum::response::Response
                 let state = context.state.lock().expect("fichier d'état");
                 let elements = if context.new_game {
                     state.saved_persistence()
+                } else if context.character_creator {
+                    state.served_creator_persistence()
                 } else {
                     state.served_persistence()
                 };

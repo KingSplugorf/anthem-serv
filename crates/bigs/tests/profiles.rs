@@ -148,3 +148,89 @@ async fn tutorial_mode_does_not_inject_hub_tutorial_completion() {
     let persistence = request(&app, "GET", "/api/character/1000/persistence", Value::Null).await;
     assert_eq!(persistence["persistenceJsonData"], "[]");
 }
+
+#[tokio::test]
+async fn creator_starts_empty_and_preserves_customization_and_completion_on_restart() {
+    let save = Save::fresh();
+    let mut initial: Value = serde_json::from_slice(&std::fs::read(&save.0).unwrap()).unwrap();
+    initial["pilotes"] = json!([]);
+    std::fs::write(&save.0, initial.to_string()).unwrap();
+    let app = router(save.context().as_character_creator());
+    let pilots = request(&app, "GET", "/api/character/1000/characters", Value::Null).await;
+    assert_eq!(pilots["characters"], json!([]));
+    let persistence = request(&app, "GET", "/api/character/1000/persistence", Value::Null).await;
+    let elements: Vec<Value> =
+        serde_json::from_str(persistence["persistenceJsonData"].as_str().unwrap()).unwrap();
+    let created = elements
+        .iter()
+        .find(|e| e["DefinitionId"] == 1963412089_u64)
+        .unwrap();
+    assert_eq!(created["RegisteredDefPropArray"][0]["Value"], false);
+    assert!(elements.iter().any(|e| e["DefinitionId"] == 1835450465_u64));
+
+    let created = request(&app, "POST", "/api/character/1000/characters", json!({})).await;
+    assert_eq!(created["characterId"], "1");
+    request(
+        &app,
+        "PUT",
+        "/api/character/1000/characters/1/name",
+        json!({"name":"New pilot"}),
+    )
+    .await;
+    request(
+        &app,
+        "PUT",
+        "/api/character/1000/characters/1/gender",
+        json!({"gender":"Male"}),
+    )
+    .await;
+    request(
+        &app,
+        "POST",
+        "/api/character/1000/characters/1/appearance",
+        json!({"appearanceData":"(0,6)"}),
+    )
+    .await;
+    request(&app, "PUT", "/api/character/1000/persistence", json!({"persistenceJsonProp":json!([
+        {"DefinitionId":1963412089_u64,"RegisteredDefPropArray":[{"PropertyId":3031061379_u64,"Value":true}]}
+    ]).to_string()})).await;
+    drop(app);
+
+    let restarted = router(save.context().as_character_creator());
+    let active = request(
+        &restarted,
+        "GET",
+        "/api/character/1000/characters/active",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(active["character"]["name"], "New pilot");
+    assert_eq!(active["character"]["gender"], "Male");
+    assert_eq!(active["character"]["appearanceData"], "(0,6)");
+    assert_eq!(active["character"]["level"], 1);
+    let card = request(
+        &restarted,
+        "GET",
+        "/api/playercard/?personaIds=1000",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(
+        card["data"][0]["activeCharacter"]["activeCharacterAppearanceData"],
+        "(0,6)"
+    );
+    let persistence = request(
+        &restarted,
+        "GET",
+        "/api/character/1000/persistence",
+        Value::Null,
+    )
+    .await;
+    let elements: Vec<Value> =
+        serde_json::from_str(persistence["persistenceJsonData"].as_str().unwrap()).unwrap();
+    let created = elements
+        .iter()
+        .find(|e| e["DefinitionId"] == 1963412089_u64)
+        .unwrap();
+    assert_eq!(created["RegisteredDefPropArray"][0]["Value"], true);
+}

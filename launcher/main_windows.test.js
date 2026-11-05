@@ -90,8 +90,12 @@ async function launcherHarness({ deferReadiness = false, taskkillThrows = false,
     electron: { app, BrowserWindow, dialog: {}, ipcMain: { handle: (name, callback) => ipc.set(name, callback) } },
     "node:child_process": { spawn, execFile }, "node:fs": fileSystem, "node:path": path,
     "./hosts": require("./hosts"), "./windows_runtime": runtime,
-    "./windows_profiles": { localProfile: (_root, userData, inherited) => ({
-      mode: "development", state: path.join(userData, "server", "state.json"),
+    "./windows_profiles": {
+      initialProfile: (config, inherited) => inherited.ANTHEM_PROFILE === "fresh" ? `fresh-${inherited.ANTHEM_PROFILE_ID || "pilot-1"}` : config.profileKey || "development",
+      listProfiles: () => [{ key: "development", label: "Original save — Level 30" }],
+      newCreatorProfile: () => "creator-new-slot",
+      localProfile: (_root, userData, inherited, selection) => ({
+      mode: "development", key: selection, state: path.join(userData, "server", "state.json"),
       env: { ...inherited, BIGS_ETAT: path.join(userData, "server", "state.json"),
         BIGS_SAUVEGARDES: path.join(userData, "server", "saves"), BLAZE_CAPTURES: path.join(userData, "server", "captures") },
     }) },
@@ -137,6 +141,15 @@ test("a second-instance request focuses the running launcher without stopping it
   await harness.ipc.get("arreter")();
 });
 
+test("new-character action selects its separate slot and is refused while playing", async () => {
+  const harness = await launcherHarness();
+  const selection = await harness.ipc.get("nouveau-profil")();
+  assert.equal(selection.selectedProfile, "creator-new-slot");
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "", profileKey: "development" });
+  assert.throws(() => harness.ipc.get("nouveau-profil")(), /Stop the game/);
+  await harness.ipc.get("arreter")();
+});
+
 test("Windows launcher starts native services, the game and Python patches, then stops only its children", async () => {
   const harness = await launcherHarness();
   await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
@@ -151,11 +164,21 @@ test("Windows launcher starts native services, the game and Python patches, then
     assert.equal(service.options.env.LISTEN_HOST, "127.0.0.1");
     assert.equal(service.options.env.BLAZE_HOST, "spring18.gosredirector.ea.com");
     assert.equal(service.options.env.BLAZE_IP, "127.0.0.1");
+    assert.equal(service.options.env.BLAZE_SERVEUR_MISSION_ID, "2000000");
   }
   await harness.ipc.get("arreter")();
   assert.equal(harness.killed[0], game.child.pid);
   assert.equal(new Set(harness.killed).size, 5);
   assert.ok(harness.logs.some((line) => line.includes("Game started")));
+});
+
+test("explicit mission-server identity overrides retain the Linux startup semantics", async () => {
+  for (const value of ["3000000", ""]) {
+    const harness = await launcherHarness({ env: { BLAZE_SERVEUR_MISSION_ID: value } });
+    await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+    assert.equal(harness.spawned.find((item) => item.command === "blaze.exe").options.env.BLAZE_SERVEUR_MISSION_ID, value);
+    await harness.ipc.get("arreter")();
+  }
 });
 
 test("cancelling Windows startup during readiness prevents game launch", async () => {

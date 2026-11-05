@@ -43,6 +43,39 @@ def fetch(route):
     return json.loads(body)
 
 
+def latest_setup(lines):
+    block, latest = None, None
+    for line in lines:
+        if re.match(r'^\S+ (?:<-|->|=>) ', line):
+            if block is not None:
+                latest = block
+            block = [] if '-> Notification 0x0004/0x0014 ' in line else None
+        elif block is not None and len(block) < 250:
+            block.append(line[:16000] if line.startswith('PROS = ') else line[:1000])
+    if block is not None:
+        latest = block
+    if latest is None:
+        return None
+    text = '\n'.join(latest)
+    def number(pattern):
+        match = re.search(pattern, text)
+        return int(match[1]) if match else None
+    players = []
+    for line in latest:
+        if not line.startswith('PROS = '):
+            continue
+        for match in re.finditer(r'\bNAME = ("(?:\\.|[^"\\])*").*?\bPID = (\d+).*?\bSTAT = (\d+)', line):
+            try:
+                name = json.loads(match[1])
+            except ValueError:
+                name = match[1]
+            players.append({'persona_id': int(match[2]), 'display_name': name, 'state': int(match[3])})
+    return {'game_id': number(r'\bGID = (\d+)'), 'network_topology': number(r'\bNTOP = (\d+)'),
+            'topology_host_persona': number(r'THST \{[^}]*?HPID = (\d+)'),
+            'dedicated_host_persona': number(r'DHST \{[^}]*?HPID = (\d+)'),
+            'setup_reason_result': number(r'REAS = .*?RSLT = (\d+)'), 'players': players}
+
+
 def collect(root, pid, get=fetch):
     report = {'schema': 1, 'captured_utc': datetime.now(timezone.utc).isoformat(), 'pid': pid}
     blaze, lines = tail(root / 'data/logs/blaze.log')
@@ -51,7 +84,9 @@ def collect(root, pid, get=fetch):
     parsed = parse_attributes(latest) if latest else None
     blaze['latest_launch_attributes'] = latest[:16000] if latest else None
     blaze['parsed_launch_attributes'] = dict(zip(ATTRIBUTES, parsed)) if parsed is not None else None
+    blaze['latest_game_setup'] = latest_setup(lines)
     blaze['recent_game_manager_requests'] = [line[:1000] for line in lines if '<- GameManager ' in line][-30:]
+    blaze['recent_user_session_requests'] = [line[:1000] for line in lines if '<- UserSessions ' in line][-30:]
     blaze['recent_selection_updates'] = [line[:1000] for line in lines if line.startswith('ATTR = ')][-20:]
     report['blaze'] = blaze
     mission, mission_lines = tail(root / f'data/active_mission_{pid}.txt')
