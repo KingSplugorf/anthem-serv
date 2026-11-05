@@ -148,7 +148,7 @@
     },
     {
       "path": "tools/windows_memory.py",
-      "sha256": "83590e793f23081dffb825193029a07e4e2259a521b73348e84169e6cdaad0f5"
+      "sha256": "ef87fb6ec75de165ae75964976677b50aea0b5c0096fa1e6e395e0d08020c994"
     },
     {
       "path": "tools/process_memory.py",

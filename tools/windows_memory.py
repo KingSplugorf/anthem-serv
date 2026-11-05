@@ -3,6 +3,7 @@ import ctypes as C
 from ctypes import wintypes as W
 import io
 import threading
+import time
 
 MEM_COMMIT = 0x1000
 PAGE_GUARD, PAGE_NOACCESS = 0x100, 0x01
@@ -208,9 +209,18 @@ def regions(pid):
 
 def modules(pid):
     k = kernel()
-    snapshot = k.CreateToolhelp32Snapshot(0x08 | 0x10, pid)
-    if snapshot == C.c_void_p(-1).value:
-        check(False)
+    # Toolhelp documents ERROR_BAD_LENGTH while the loader's module list is
+    # changing. Retry that snapshot race only; access/bitness/process errors
+    # must remain visible. No invalid handle is owned or closed on these paths.
+    for attempt in range(100):
+        snapshot = k.CreateToolhelp32Snapshot(0x08 | 0x10, pid)
+        if snapshot not in (None, 0, C.c_void_p(-1).value):
+            break
+        code = last_error()
+        error = win_error()
+        if code != 24 or attempt == 99:  # ERROR_BAD_LENGTH; at most ~5 seconds
+            raise error
+        time.sleep(0.05)
     try:
         entry = MODULEENTRY32W()
         entry.dwSize = C.sizeof(entry)
