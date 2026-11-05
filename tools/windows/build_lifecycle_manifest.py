@@ -54,6 +54,7 @@ tools/end_expedition.py
 tools/combat_patches/ai/navigation.py
 tools/combat_patches/ai/player_position.py
 tools/combat_patches/ai/shots.py
+tools/combat_patches/server_damage.py
 tools/windows/play-profile.ps1
 tools/windows/play-fresh.ps1
 tools/windows/inspect_mission.py

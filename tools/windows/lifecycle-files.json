@@ -183,6 +183,10 @@
       "sha256": "59bfd1ff98cdfc3f13b98361dd2b43912e478505f179335549e446284a9f12b9"
     },
     {
+      "path": "tools/combat_patches/server_damage.py",
+      "sha256": "c6eb938e3407dee9c72dbb7f6fbe019812df52ebdbf09b7df9c28636daf66c12"
+    },
+    {
       "path": "tools/windows/play-profile.ps1",
       "sha256": "1d20bea12b3de64c409a9e84510e37e7255a9b1eac240e46d4dd6cc384a42957"
     },
@@ -200,7 +204,7 @@
     },
     {
       "path": "tools/windows/build_lifecycle_manifest.py",
-      "sha256": "1b8e0977464a607414711f33c57d57f2552583291b4571bb1917feee2314f698"
+      "sha256": "81b6e8995c9e3ebadb7a4c032490bae50a77cf9899f0908bd02c638ac14069b8"
     },
     {
       "path": "tools/windows/README.md",

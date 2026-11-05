@@ -12,6 +12,8 @@ CODE_ADDRESS = 0x142B27F00
 CALLBACK_OBJECT = 0x144759E68
 CALLBACK_FUNCTION = 0x144759E70
 CODE = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "callback", "callback.bin"), "rb").read()
+HEALTH_CALLBACK = 0x142B2C800
+HEALTH_CODE = (Path(__file__).resolve().parent / 'health' / 'impacts.bin').read_bytes()
 
 
 def main() -> None:
@@ -35,6 +37,13 @@ def main() -> None:
     if action == "etat":
         print(f"rappel serveur objet={obj:#x} fonction={fn:#x} ; code {code_state}")
     elif action == "poser":
+        # server_health upgrades this bootstrap callback. A new expedition
+        # must preserve that verified successor rather than reject or downgrade it.
+        if fn == HEALTH_CALLBACK:
+            if obj not in (CODE_ADDRESS, HEALTH_CALLBACK) or read(HEALTH_CALLBACK, len(HEALTH_CODE)) != HEALTH_CODE:
+                sys.exit("rappel santé existant non vérifié : rien modifié")
+            print("rappel santé déjà posé : conservé pour cette expédition")
+            return
         if (obj, fn) not in ((0, 0), (CODE_ADDRESS, CODE_ADDRESS)):
             sys.exit(f"rappel serveur déjà occupé : objet={obj:#x} fonction={fn:#x}")
         if code_state == "inattendu":
