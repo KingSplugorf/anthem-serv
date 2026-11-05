@@ -95,6 +95,11 @@ def collect(root, pid, get=fetch):
     debugger, debugger_lines = tail(root / 'data/logs/gdb_active_mission.log')
     debugger['tail'] = [line[:2000] for line in debugger_lines[-60:]]
     report['debugger'] = debugger
+    report['combat_followers'] = {}
+    for name in ('player_position', 'health_follow'):
+        info, follower_lines = tail(root / f'data/logs/{name}.log')
+        info['tail'] = [line[:2000] for line in follower_lines[-60:]]
+        report['combat_followers'][name] = info
     bigs, bigs_lines = tail(root / 'data/logs/bigs.log')
     bigs['recent_http_requests'] = [line[:1000] for line in bigs_lines if re.match(r'^(GET|POST|PUT|DELETE|PATCH) /', line)][-50:]
     report['bigs'] = bigs

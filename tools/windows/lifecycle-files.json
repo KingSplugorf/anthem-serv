@@ -100,7 +100,7 @@
     },
     {
       "path": "tools/auto_patches.py",
-      "sha256": "d1de397072c34e36590c45ffe1c1b2af97f309478199584c3d0fc6345f3207c7"
+      "sha256": "1976868a827a32775bddbd27bfe828d94faa0f7d6a8437e8fb3fb3716ca4e30f"
     },
     {
       "path": "tools/mission_hooks.py",
@@ -192,7 +192,7 @@
     },
     {
       "path": "tools/windows/inspect_mission.py",
-      "sha256": "3553277508167861a433bde2b770e46077b27dd50069e6bd3cdcf18463c28a51"
+      "sha256": "a4fc12fa828eff76d2526a2d4d0dd3854469d19158bb2acc4ac19b159ea4b852"
     },
     {
       "path": "tools/windows/update-lifecycle.ps1",

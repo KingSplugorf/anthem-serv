@@ -262,13 +262,20 @@ def apply_mission_patches(pid, chosen, cancelled=lambda: False, children=None):
                 search = pool.submit(find_player, process) if player_pending else None
                 groups = list(pool.map(lambda group: apply_in_order(pid, group, cancelled, children), groups))
                 if search:
-                    search.result()
-                    player_pending = False
-                    if not cancelled():
-                        follow(pid, chosen, children)
+                    try:
+                        search.result()
+                    except OSError as error:
+                        # Level objects can disappear during the initial scan.
+                        # Keep the worker and patch retries alive until they are
+                        # available; a partial setup must not count as ready.
+                        print(f"{time.strftime('%H:%M:%S')} player scan not ready: {error}; retrying", flush=True)
+                    else:
+                        player_pending = False
+                        if not cancelled():
+                            follow(pid, chosen, children)
                 if cancelled():
                     return False
-                if not any(groups):
+                if not any(groups) and not player_pending:
                     print(f"{time.strftime('%H:%M:%S')} correctifs de mission posés", flush=True)
                     return True
                 if time.monotonic() >= deadline:
