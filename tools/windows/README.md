@@ -92,6 +92,34 @@ boolean wrappers. It does not execute code, attach to the game, or change trust.
 Candidate addresses are not verified API identities and must not be called or
 patched based on this report alone. Share `Anthem-tls-code.json` for analysis.
 
+For the previously inspected executable (SHA-256
+`63cbc85f17ebd5d9ede8d72cef07eff40945bf5000604b52d482812cbbcd0338`),
+the CA-loader investigation can follow PEM marker pointers through data tables,
+RIP-relative code references, and two levels of candidate callers:
+
+```powershell
+py -3 tools/windows/inspect_tls_refs.py 'E:\EA Games\Anthem\Anthem.exe' --ca-loader --output Anthem-ca-code.json
+```
+
+Use the actual executable path. This mode needs no earlier JSON report, Python
+packages, running game, or administrator access. It checks the exact executable
+hash, opens it read-only, and exports bounded function excerpts and reference
+counts. It rejects an output path that names the executable or input layout.
+Share `Anthem-ca-code.json`; the original executable, DLLs, and certificates are
+unchanged. A byte-pattern reference can occur inside an instruction operand, so
+the reported candidates require disassembly and runtime verification.
+
+CA registration is **not implemented yet**. The intended integration is to load
+only the public development certificate through a verified game CA-loading API,
+after its TLS library initializes and before connecting. Its address, calling
+convention, initialization requirements, and success result must be established
+for this build before invoking it. The reference DirtySDK API name
+`ProtoSSLSetCACert` is a search clue, not a verified Anthem function address.
+No private key belongs in the game-side loader. Keep the current certificate
+pair while investigating; this report neither regenerates it nor installs it in
+Windows. Static CA-loading code alone does not prove the current connection
+failure is caused by certificate trust.
+
 ## Patching and debugger changes
 
 - `tools/process_memory.py` selects Linux `/proc` access or native Win32 access.
