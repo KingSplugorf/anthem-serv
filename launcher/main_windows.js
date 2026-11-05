@@ -178,6 +178,10 @@ async function play(_event, { mode, ip }) {
       log("Game closed");
       stopSession().catch((error) => log(error.message));
     });
+    if (process.env.ANTHEM_SKIP_PATCHES === "1") {
+      log("Connection test: game started without external memory patches or debugger. Mission launching is not prepared in this mode.");
+      return;
+    }
     patches = start(python.command, [...python.prefix, "-X", "utf8", "-I", path.join(ROOT, "tools", "auto_patches.py"), String(gamePid)]);
     await launched(patches);
     patches.once("exit", (code) => {

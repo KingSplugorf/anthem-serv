@@ -5,7 +5,7 @@ const vm = require("node:vm");
 const fs = require("node:fs");
 const path = require("node:path");
 
-async function launcherHarness({ deferReadiness = false, taskkillThrows = false } = {}) {
+async function launcherHarness({ deferReadiness = false, taskkillThrows = false, env = {} } = {}) {
   const ipc = new Map();
   const app = new EventEmitter();
   app.whenReady = () => Promise.resolve();
@@ -84,7 +84,7 @@ async function launcherHarness({ deferReadiness = false, taskkillThrows = false 
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "main_windows.js"), "utf8"), {
     require: (name) => { assert.ok(name in modules, name); return modules[name]; },
-    __dirname, process: { env: {} }, console: { error: (...args) => errors.push(args) },
+    __dirname, process: { env }, console: { error: (...args) => errors.push(args) },
   }, { filename: "main_windows.js" });
   await new Promise(setImmediate);
   return { ipc, spawned, killed, logs, ready, app, quit, windows, errors, quitCalls: () => quitCalls };
@@ -172,4 +172,15 @@ test("closing during service readiness cancels startup without sending to the cl
   assert.equal(harness.spawned.length, 4);
   assert.equal(new Set(harness.killed).size, 3);
   assert.deepEqual(harness.errors, []);
+});
+
+test("connection-only mode runs services and the same game without spawning a patcher or debugger", async () => {
+  const harness = await launcherHarness({ env: { ANTHEM_SKIP_PATCHES: "1", ANTHEM_TLS_DIAGNOSTICS: "1" } });
+  await harness.ipc.get("jouer")(null, { mode: "local", ip: "" });
+  assert.equal(harness.spawned.length, 5); // dependency check, three services, game
+  assert.ok(harness.spawned.some((item) => item.command === "D:\\Anthem\\Anthem.exe"));
+  assert.equal(harness.spawned.some((item) => item.args.some((arg) => /auto_patches|windows_debugger/.test(arg))), false);
+  assert.ok(harness.logs.some((line) => line.includes("without external memory patches or debugger")));
+  await harness.ipc.get("arreter")();
+  assert.equal(new Set(harness.killed).size, 4);
 });

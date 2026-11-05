@@ -142,6 +142,24 @@ development certificate. An offline-launch configuration alone does not confirm
 certificate compatibility. TLS verification and the server's supported protocol
 versions are unchanged by these diagnostics.
 
+Before attributing a connection failure to the game or its certificate handling,
+isolate the external patcher/debugger with a connection-only control run. Close
+existing sessions and start from the repository root:
+
+```powershell
+Remove-Item Env:ANTHEM_TLS_DIAGNOSTICS -ErrorAction SilentlyContinue
+$env:ANTHEM_SKIP_PATCHES = '1'
+try { npm.cmd --prefix .\launcher start }
+finally { Remove-Item Env:ANTHEM_SKIP_PATCHES -ErrorAction SilentlyContinue }
+```
+
+Click Play and confirm the launcher reports a connection test without external
+memory patches or debugger. The normal service readiness checks and the same
+configured executable/DLL installation remain in use. This mode does not prepare
+mission launching and is not a direct hub/mission-loading implementation. Use it
+only to compare the game's login connection with and without the external
+patching layer; it makes no certificate-store changes.
+
 ### Passive client-certificate diagnostic mode
 
 For the inspected executable SHA-256
