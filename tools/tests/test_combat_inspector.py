@@ -223,3 +223,26 @@ class CombatInspectorTests(unittest.TestCase):
         report = inspector.gear(inspector.View(read),component,active_only=True,raw=True)
         self.assertEqual([row['slot'] for row in report['slots']],[5])
         self.assertEqual(report['slots'][0]['raw_update_state'],bytes(0x120).hex())
+
+    def test_timed_capture_records_damage_counter_changes(self):
+        read,put,_=self.fixture()
+        elapsed=[0.0]
+        def pause(seconds):
+            elapsed[0]+=seconds
+            put(0x1537377D0,struct.pack('<IIf',3,1,8))
+        samples=inspector.watch_health(inspector.View(read),0.25,clock=lambda:elapsed[0],pause=pause)
+        self.assertEqual(samples[0]['weapon_counters'],(0,0,0))
+        self.assertEqual(samples[-1]['weapon_counters'],(3,1,8))
+
+    def test_recording_budget_is_independent_of_exhausted_code_snapshot(self):
+        read,_,_=self.fixture()
+        original=inspector.code_windows
+        from unittest.mock import patch
+        def exhaust(view,addresses,output):
+            original(view,addresses,output)
+            view.calls=view.max_calls
+        with patch.object(inspector,'code_windows',side_effect=exhaust):
+            report=inspector.collect(read)
+        self.assertTrue(report['snapshot_budget_limited'])
+        self.assertEqual(report['player_health_samples'][0]['weapon_counters'],(0,0,0))
+        self.assertFalse(report['recording_budget_limited'])

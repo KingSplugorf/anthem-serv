@@ -50,10 +50,12 @@ NATIVE = {
 
 
 class View:
-    def __init__(self, read): self.reader, self.calls, self.bytes = read, 0, 0
+    def __init__(self, read, *, max_calls=20000, max_bytes=1 << 20):
+        self.reader, self.calls, self.bytes = read, 0, 0
+        self.max_calls, self.max_bytes = max_calls, max_bytes
     def read(self, address, size):
         if (not 0x10000 <= address < address+size <= 1 << 47 or size > 8192
-                or self.calls >= 20000 or self.bytes+size > 1 << 20):
+                or self.calls >= self.max_calls or self.bytes+size > self.max_bytes):
             raise OSError('Read range or diagnostic budget exceeded')
         self.calls += 1
         self.bytes += size
@@ -285,12 +287,14 @@ def watch_health(view, seconds, *, enemies=(), clock=time.monotonic, pause=time.
     samples = []
     # The count cap also bounds work if the clock moves or a test clock stalls.
     for index in range(121):
-        sample = {'elapsed':round(clock()-start,3), **player_health(view)}
+        sample = {'elapsed':round(clock()-start,3), **player_health(view),
+                  'weapon_counters':safe(lambda:struct.unpack('<IIf',view.read(0x1537377D0,12))),
+                  'ai_shot_counters':safe(lambda:struct.unpack('<IIfI',view.read(0x1537376E0,16)))}
         if enemies:
             sample['enemies'] = [safe(lambda entity=entity:defenses(view,entity)) for entity in enemies]
         samples.append(sample)
         remaining = seconds-(clock()-start)
-        if remaining <= 0 or view.calls >= 20000 or view.bytes+8192 > 1 << 20: break
+        if remaining <= 0 or view.calls >= view.max_calls or view.bytes+8192 > view.max_bytes: break
         pause(min(0.25,remaining))
     return samples
 
@@ -398,8 +402,12 @@ def collect(read, watch_seconds=0):
         return not shielded,gap,info['entity']
     enemies = sorted(enemies,key=priority)[:4]
     report['watched_enemies'] = [{'entity':info['entity'],'name':info.get('name')} for info in enemies]
-    report['player_health_samples'] = watch_health(view,watch_seconds,enemies=[info['entity'] for info in enemies])
-    report['recording_budget_limited'] = view.calls >= 20000 or view.bytes+8192 > 1 << 20
+    # Code export must not consume the timed capture's independent bounded budget.
+    recording = View(read,max_calls=80000,max_bytes=2 << 20)
+    report['player_health_samples'] = watch_health(recording,watch_seconds,enemies=[info['entity'] for info in enemies])
+    report['recording_read_budget_used'] = {'calls':recording.calls,'bytes':recording.bytes}
+    report['recording_budget_limited'] = recording.calls >= recording.max_calls or recording.bytes+8192 > recording.max_bytes
+    report['snapshot_budget_limited'] = view.calls >= view.max_calls or view.bytes+8192 > view.max_bytes
     report['read_budget_used'] = {'calls': view.calls, 'bytes': view.bytes}
     return report
 

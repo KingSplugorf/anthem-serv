@@ -288,7 +288,7 @@
     },
     {
       "path": "tools/windows/inspect_combat.py",
-      "sha256": "62e43cd2f09832adddfb667f3542e7ee66036ec61402456a73e3afd265d7ef8e"
+      "sha256": "c0866d2a99a57b1a5525c63c51a28622bb1fe86d1b48665ac9b769c7d1f6262b"
     },
     {
       "path": "tools/tests/test_direct_python.py",
