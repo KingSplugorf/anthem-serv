@@ -246,3 +246,24 @@ class CombatInspectorTests(unittest.TestCase):
         self.assertTrue(report['snapshot_budget_limited'])
         self.assertEqual(report['player_health_samples'][0]['weapon_counters'],(0,0,0))
         self.assertFalse(report['recording_budget_limited'])
+
+    def test_impact_paths_export_parser_continuation_and_registered_targets_without_writes(self):
+        read,put,memory=self.fixture()
+        parser=inspector.NATIVE['impact_stream_parser']
+        for offset in (4096,8192):put(parser+offset,b'\x90'*4096)
+        target=0x140100000
+        put(target,b'\xc3'+bytes(4095))
+        for address in inspector.IMPACT_REGISTRATIONS:put(address,struct.pack('<QQ',0,target))
+        before=dict(memory)
+        report=inspector.impact_paths(read,[])
+        self.assertEqual(len(report['registrations']),5)
+        self.assertEqual(report['registrations'][0]['function'],target)
+        for address in (parser,parser+4096,parser+8192,target):
+            self.assertIn('bytes',report['code'][str(address)])
+        self.assertEqual(memory,before)
+
+    def test_impact_paths_never_reads_handler_code_outside_supported_image_range(self):
+        read,put,_=self.fixture()
+        for address in inspector.IMPACT_REGISTRATIONS:put(address,struct.pack('<QQ',0,0x12345))
+        report=inspector.impact_paths(read,[])
+        self.assertNotIn(str(0x12345),report['code'])

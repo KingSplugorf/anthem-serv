@@ -214,6 +214,54 @@ def code_windows(view, addresses, output):
         except OSError as error: entry['error'] = str(error)
 
 
+# A/B are identified in the parser. Later adjacent registrations remain raw
+# candidates until their parser continuation and handlers have been decoded.
+IMPACT_REGISTRATIONS = (0x144759E68,0x14475A4C8,0x14475A4D8,
+                        0x14475A4E8,0x14475A4F8)
+
+
+def impact_paths(read, actors):
+    view=View(read)
+    result={'registrations':[], 'code':{}, 'player_weapons':[],
+            'limitations':['Adjacent callback slots are candidates, not verified Flashfire handlers.',
+                           'This read-only capture does not count incoming impact callbacks.']}
+    targets=[]
+    for address in IMPACT_REGISTRATIONS:
+        def registration():
+            owner,target=struct.unpack('<QQ',view.read(address,16))
+            if BASE+0x1000<=target<0x154000000: targets.append(target)
+            return {'address':address,'object':owner,'function':target}
+        result['registrations'].append(safe(registration))
+    # The previous 4 KiB parser window ended midway through the third section.
+    # Continuation windows are raw code, not invented function entry points.
+    code_windows(view,[NATIVE['impact_stream_parser']+offset for offset in (0,4096,8192)],result['code'])
+    code_windows(view,targets,result['code'])
+    for actor_info in actors:
+        if not actor_info.get('server_player'): continue
+        for component in actor_info.get('components',[]):
+            for slot in component.get('gear',{}).get('slots',[]):
+                entity=slot.get('entity')
+                if not isinstance(entity,int) or not entity: continue
+                def weapon():
+                    if view.qword(entity)!=ACTION_GEAR: raise OSError('Weapon entity changed')
+                    rows=[]
+                    for offset in range(0x2B8,0x2D8,8):
+                        pointer=view.qword(entity+offset)
+                        if not pointer: continue
+                        def behavior():
+                            table,owner=view.qword(pointer),view.qword(pointer+0x10)
+                            if not (0<=owner-entity<0x460 and 0x143660000<=table<0x1442F0000):
+                                raise OSError('Behavior ownership/type changed')
+                            data=view.qword(pointer+0x28)
+                            return {'offset':offset,'table':table,'address':pointer,'data':data,
+                                    'raw_data':safe(lambda:view.read(data,512).hex())}
+                        rows.append(safe(behavior))
+                    return {'entity':entity,'slot':slot['slot'],'behaviors':rows}
+                result['player_weapons'].append(safe(weapon))
+    result['read_budget_used']={'calls':view.calls,'bytes':view.bytes}
+    return result
+
+
 def client_position(view, health):
     if not health or view.qword(health) != CLIENT_PLAYER_HEALTH:
         raise OSError('No validated cached client-player health component')
@@ -408,6 +456,7 @@ def collect(read, watch_seconds=0):
     report['recording_read_budget_used'] = {'calls':recording.calls,'bytes':recording.bytes}
     report['recording_budget_limited'] = recording.calls >= recording.max_calls or recording.bytes+8192 > recording.max_bytes
     report['snapshot_budget_limited'] = view.calls >= view.max_calls or view.bytes+8192 > view.max_bytes
+    report['impact_paths'] = impact_paths(read,report['actors'])
     report['read_budget_used'] = {'calls': view.calls, 'bytes': view.bytes}
     return report
 
