@@ -80,6 +80,22 @@ class NativeIntroductionTests(unittest.TestCase):
         self.startup(self.quests[0]);self.assertEqual(self.hooks.phase,'active')
         self.startup(self.quests[0],state=0);self.assertFalse(self.hooks.lease.active(1))
 
+    def test_opt_in_preserves_observed_tutorial_mode_without_changing_request(self):
+        self.test_real_tutorial_matchmaking_retains_native_level_and_needs_no_hub_point_metadata()
+        # A separate matched startup exercises the gate used in the reported hang.
+        self.hooks.current={'origin':'native-story-matchmaking','attributes':[1,self.quests[0],0,0]}
+        self.hooks.launched=(1,self.quests[0],0,0)
+        self.memory.put(0x20000,struct.pack('<IIII',3,self.quests[0],0,0))
+        self.hooks.native_playmode=True
+        self.hooks.gate({})
+        self.assertEqual(self.hooks.launched,(3,self.quests[0],0,0))
+        self.assertEqual(self.hooks.current['attributes'][0],1)
+        self.assertEqual(self.hooks.current['startup_attributes'][0],3)
+        self.hooks.launched=(1,self.quests[0],0,0)
+        self.hooks.current['origin']='normal'
+        self.hooks.adopt_native_playmode((3,self.quests[0],0,0))
+        self.assertEqual(self.hooks.launched[0],1)
+
 
 class NativeLaunchPreparationTests(unittest.TestCase):
     def test_story_attaches_before_heap_scans_but_normal_launch_retains_them(self):

@@ -156,7 +156,7 @@
     },
     {
       "path": "tools/mission_lifecycle.py",
-      "sha256": "167e1375e58859abf5215c6bcddc48a2faff7a803c3e794533ec97eb33e5298e"
+      "sha256": "22054a77b221ebdce1c066ada43baee32eb0a15e289db01f0300a2cfbe19b892"
     },
     {
       "path": "tools/mission_lease.py",
@@ -180,7 +180,7 @@
     },
     {
       "path": "tools/windows_debugger.py",
-      "sha256": "17559ef2a5f9e20ec237cb7ba9cceff6c24f2eabcf4147ad5dd158512ec033bb"
+      "sha256": "486fb70dad29650fe1ab0e58c278ff8ef36933912eba4075e7760c388647b3b1"
     },
     {
       "path": "tools/windows_ca_loader.py",
@@ -348,7 +348,7 @@
     },
     {
       "path": "tools/tests/test_native_introduction.py",
-      "sha256": "5ca39c8ef78d691fae0e810b3a95d61804354ea49875e94cf3ff9e88094d2ac2"
+      "sha256": "b20b56a8cd81937bec676e9aaa29110e2a2515869b572316fb7a2d7017ca5c9e"
     },
     {
       "path": "tools/tests/test_mission_diagnostics.py",

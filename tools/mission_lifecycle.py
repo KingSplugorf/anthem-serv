@@ -128,7 +128,7 @@ class TransitionPoints:
 
 class RepeatingMissionHooks(MissionHooks):
     def __init__(self, memory, pid, run_id, data=Path('data'), persona=1000, clock=time.monotonic, timeout=180,
-                 native_story=False):
+                 native_story=False, native_playmode=False):
         super().__init__(memory, pid, data)
         self.run_id, self.persona, self.clock, self.timeout = run_id, persona, clock, timeout
         self.generation, self.sequence = 0, 0
@@ -138,6 +138,7 @@ class RepeatingMissionHooks(MissionHooks):
         self.deadline, self.last_startup_state = None, None
         self.points = None
         self.native_story = self.native_story_watch = native_story
+        self.native_playmode = native_playmode
         self.native_startup = self.native_observation = None
         self.report_path = self.data / f'mission_state_{pid}.json'
         self.lease_path = self.data / f'mission_lease_{pid}_{run_id}.bin'
@@ -278,6 +279,16 @@ class RepeatingMissionHooks(MissionHooks):
         except (OSError, ValueError, KeyError, struct.error) as error:
             self.finish('failed', f'Launch rejected safely: {error}')
 
+    def adopt_native_playmode(self, values):
+        # Opt-in trial: preserve only the native mode actually observed for a
+        # matched tutorial. Quest/difficulty/checkpoint still come from its request.
+        if (self.native_playmode and self.launched and self.current
+                and self.current.get('origin') == 'native-story-matchmaking'
+                and values[0] == 3 and self.launched[0] != 3):
+            self.launched = (3, *self.launched[1:])
+            self.current['startup_attributes'] = list(self.launched)
+            self.publish('Intro trial: preserving observed native PlayMode 3')
+
     def startup(self, registers):
         self.poll()
         if self.launched is None:
@@ -286,6 +297,8 @@ class RepeatingMissionHooks(MissionHooks):
             return
         try:
             state = registers['rdx'] & 0xffffffff
+            if self.native_playmode:
+                self.adopt_native_playmode(struct.unpack('<IIII',self.memory.read(registers['rcx']+0x18,16)))
             if state != self.last_startup_state:
                 super().startup(registers)
                 self.last_startup_state = state
@@ -295,7 +308,7 @@ class RepeatingMissionHooks(MissionHooks):
                 self.memory.write(startup + 0x31, b'\x01')
             if state == 8:
                 if self.current and self.current.get('origin', '').startswith('native-story-'):
-                    self.native_startup = (registers['rcx'], tuple(self.current['attributes']))
+                    self.native_startup = (registers['rcx'], tuple(self.launched))
                 self.launched, self.deadline, self.phase = None, None, 'active'
                 self.lease.activate(self.generation)
                 self.publish('Internal mission server started; startup overrides released')
@@ -346,6 +359,9 @@ class RepeatingMissionHooks(MissionHooks):
         self.poll()
         if self.launched is not None:
             try:
+                if self.native_playmode:
+                    _, values = self.starting_info()
+                    self.adopt_native_playmode(values)
                 super().gate(registers)
             except OSError as error:
                 self.finish('failed', f'Startup gate became invalid: {error}')
