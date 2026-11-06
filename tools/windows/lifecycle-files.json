@@ -300,11 +300,11 @@
     },
     {
       "path": "tools/windows/build_lifecycle_manifest.py",
-      "sha256": "4b04f1aa21bd3dc945e65f2277f2065343a44f20b9cab88138feda936e8cc1a8"
+      "sha256": "97d961e1bb2ba09ba8d88bf848cfe9a2db47e10bfefea26c1be562e8b5ebb9b8"
     },
     {
       "path": "tools/windows/README.md",
-      "sha256": "1f3dce1aad3fc9bffeb6f97da5b27be07a56f36c1259002d050b939a8ba65301"
+      "sha256": "185ec2e9db803e52656d6dc1376dbac7b26a4e66f7843602ddd6752d099704bd"
     },
     {
       "path": "tools/windows/PROGRESSION.md",
@@ -313,6 +313,34 @@
     {
       "path": "tools/windows/INTRODUCTION.md",
       "sha256": "25b0db5e71f009d8ad169d7510e506251e45f0b6c7e7dad9255ed012917e1b73"
+    },
+    {
+      "path": "tools/windows/DEFENSE_TESTS.md",
+      "sha256": "6cdb7f7719612c1ce463575d3224237ea19c0669e6042819b5c6307a427ec1a6"
+    },
+    {
+      "path": "tools/windows/record-defense.ps1",
+      "sha256": "fee858038a47e5bc6950f7e75a7c6b413898818a8ad67c34286174305d4825c1"
+    },
+    {
+      "path": "tools/combat_patches/health/shield_flags.py",
+      "sha256": "c8e1889881c455c0b2d5685a8a2d42a25d121a209ad196f57653fc43c33d70a2"
+    },
+    {
+      "path": "tools/combat_patches/health/shield_flags.s",
+      "sha256": "066f57846660fb73bc0449bcf4508929da3e0b0ea69048fc2eb7a1009bc6a843"
+    },
+    {
+      "path": "tools/combat_patches/health/shield_flags.bin",
+      "sha256": "fe94aade4ff2a1f592e6c50425cdf71f92908e90f13766a8b3719be57606a4d8"
+    },
+    {
+      "path": "tools/tests/test_shield_flags.py",
+      "sha256": "168149ff238778fae2a28d957150ddb7883bb9ff953e623a9442f7a5dce38a3c"
+    },
+    {
+      "path": "tools/tests/fixtures/shield_flags.c",
+      "sha256": "43a29b77c94400012b2ebb5e26258aac01f8fe02d1a52414e3d8ddde76ee9907"
     },
     {
       "path": "crates/bigs/tests/profiles.rs",

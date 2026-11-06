@@ -88,6 +88,13 @@ tools/windows/build_lifecycle_manifest.py
 tools/windows/README.md
 tools/windows/PROGRESSION.md
 tools/windows/INTRODUCTION.md
+tools/windows/DEFENSE_TESTS.md
+tools/windows/record-defense.ps1
+tools/combat_patches/health/shield_flags.py
+tools/combat_patches/health/shield_flags.s
+tools/combat_patches/health/shield_flags.bin
+tools/tests/test_shield_flags.py
+tools/tests/fixtures/shield_flags.c
 crates/bigs/tests/profiles.rs
 tools/tests/test_native_introduction.py
 tools/tests/test_mission_diagnostics.py

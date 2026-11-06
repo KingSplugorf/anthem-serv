@@ -731,3 +731,7 @@ cargo.exe +1.90.0 build --locked --workspace --bins
 The Python suite exercises the memory API, page-protection cleanup, debug-event
 handling/detach (including failures), mission semantics, PE reporting, and combat
 selection. It does not substitute for testing real Windows API calls and the game.
+
+Shield routing, missing HUD and pickup healing have separate experimental test
+procedures: [Defense experiments](DEFENSE_TESTS.md). The shield experiment is
+opt-in; updating does not automatically enable it.
